@@ -102,6 +102,20 @@ ros2 run carla_ros_sim vehicle_spawner
 
 ---
 
+### Terminal 4: To plot rqt live plot
+
+To plot linear acceleration in real-time:
+
+```
+ros2 run rqt_plot rqt_plot /carla/tesla_ego/imu_sensor/linear_acceleration/x
+```
+To plot your Latitude and Longitude moving in real-time:
+```
+ros2 run rqt_plot rqt_plot /carla/tesla_ego/gnss_sensor/latitude /carla/tesla_ego/gnss_sensor/longitude
+```
+
+---
+
 ## Development Notes and Troubleshooting
 
 ### NumPy 2.x and `cv_bridge` Compatibility
