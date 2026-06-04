@@ -58,7 +58,7 @@ class CarlaVehicleSpawner(Node):
         traffic_manager = self.client.get_trafficmanager(tm_port)
 
         # increase the number to drive slower
-        traffic_manager.global_percentage_speed_difference(50.0)
+        traffic_manager.global_percentage_speed_difference(0.0)
         
         # making the autopilot behave better
         traffic_manager.set_global_distance_to_leading_vehicle(2.5)
