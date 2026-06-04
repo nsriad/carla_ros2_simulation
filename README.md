@@ -1,15 +1,6 @@
 # CARLA ROS 2 Simulation
 
-A highly optimized simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble**. This pipeline is designed to support research in **Intelligent Transportation Systems (ITS)**, with a focus on **Multimodal Embedding Learning using Controlled Camera–LiDAR Interaction** for autonomous vehicles.
-
-The framework provides a stable architecture for extracting perfectly synchronized multimodal datasets from:
-
-- RGB Camera
-- 32-Channel LiDAR
-- IMU
-- GNSS
-
-while avoiding common issues such as memory buffer overruns, synchronization failures, and Traffic Manager port collisions.
+A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for multimodal data extraction (Camera, LiDAR, IMU, GNSS) and autonomous vehicle testing.
 
 ---
 
@@ -21,18 +12,21 @@ while avoiding common issues such as memory buffer overruns, synchronization fai
 
 ### Sensors
 
-- Front RGB Camera (1920×1080)
-- Top-Mounted 32-Channel Ray-Cast LiDAR
 - IMU
 - GNSS
 
-### Key Features
+---
 
-- Custom Traffic Manager port routing (`8051`)
-- Physics-synchronized spectator tracking
-- Memory-optimized synchronous execution
-- Stable multimodal sensor synchronization
-- Research-grade data collection pipeline
+## Tested Environment/Prerequisites
+
+| Component | Version |
+|-----------|---------|
+| Ubuntu | 22.04 |
+| ROS 2 | Humble |
+| CARLA | 0.9.16 |
+| Python | 3.10 |
+| Unreal Engine | CARLA Built-in |
+| NumPy | 1.x |
 
 ---
 
@@ -83,7 +77,7 @@ timeout:=30 \
 fixed_delta_seconds:=0.1
 ```
 
-#### Presentation Configuration (30 FPS)
+#### For Smooth Simulation (30 FPS)
 
 Use only when heavy sensor streams are temporarily disabled.
 
@@ -110,7 +104,7 @@ ros2 run carla_ros_sim vehicle_spawner
 
 ## Development Notes and Troubleshooting
 
-### 1. NumPy 2.x and `cv_bridge` Compatibility
+### NumPy 2.x and `cv_bridge` Compatibility
 
 **Issue**
 
@@ -122,7 +116,7 @@ Use a dedicated virtual environment (`carla_env`) with a NumPy 1.x version insta
 
 ---
 
-### 2. CARLA 0.9.16 Version Rejection
+### CARLA 0.9.16 Version Rejection
 
 **Issue**
 
@@ -130,35 +124,11 @@ The default `carla_ros_bridge` includes a version check that rejects CARLA relea
 
 **Resolution**
 
-Patch the bridge source code to bypass the version restriction and allow native support for CARLA 0.9.16.
+Patch the bridge source code located at `~/carla_ros_bridge/src/ros-bridge/carla_ros_bridge/src/carla_ros_bridge/bridge.py` to bypass the version restriction and allow native support for CARLA 0.9.16. This code read the version from the file `CARLA_VERSION`, just edit the version here.
 
 ---
 
-### 3. Unreal Engine Segmentation Faults (Signal 11) and Out-of-Memory Errors
-
-**Issue**
-
-Running Town10HD_Opt with high-resolution RGB images and 32-channel LiDAR can overwhelm system memory.
-
-**Resolution**
-
-Set:
-
-```python
-sensor_tick = '0.1'
-```
-
-Use:
-
-```bash
-fixed_delta_seconds:=0.1
-```
-
-This throttles sensor generation and allows synchronous processing of incoming data.
-
----
-
-### 4. Traffic Manager Port Conflicts
+### Traffic Manager Port Conflicts
 
 **Issue**
 
@@ -186,7 +156,7 @@ sudo fuser -k 8051/tcp
 
 ---
 
-### 5. Spectator Camera Jitter and Desynchronization
+### Spectator Camera Jitter and Desynchronization
 
 **Issue**
 
@@ -204,26 +174,3 @@ This ensures smooth and physically synchronized camera tracking.
 
 ---
 
-## Research Applications
-
-This repository is intended for:
-
-- Multimodal Sensor Fusion
-- Autonomous Driving Research
-- Geometric Deep Learning
-- Camera–LiDAR Representation Learning
-- ITS and Connected Vehicle Research
-- Synchronized Dataset Generation for Machine Learning
-
----
-
-## Tested Environment
-
-| Component | Version |
-|-----------|---------|
-| Ubuntu | 22.04 |
-| ROS 2 | Humble |
-| CARLA | 0.9.16 |
-| Python | 3.10 |
-| Unreal Engine | CARLA Built-in |
-| NumPy | 1.x |
