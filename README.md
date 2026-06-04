@@ -50,7 +50,7 @@ Navigate to your CARLA installation directory and select the mode appropriate fo
 ./CarlaUE4.sh -quality-level=Low
 ```
 
-#### Presentation Mode (Maximum Visual Quality)
+#### High Quality Mode (Maximum Visual Quality)
 
 ```bash
 ./CarlaUE4.sh -quality-level=Epic
