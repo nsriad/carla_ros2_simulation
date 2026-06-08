@@ -68,8 +68,11 @@ class CarlaVehicleSpawner(Node):
 
         self.get_logger().info(f'Ego Vehicle spawned at: {spawn_point.location}')
 
-        # trigger ros2 topics with nav sensors
+        # trigger ros2 topics with imu and gnss sensors
         self.imu_gnss_sensors()
+
+        # trigger ros2 topics with camera and lidar sensors
+        self.camera_lidar_sensors()
 
         # move the spectator camera to see it
         spectator = self.world.get_spectator()
@@ -93,6 +96,38 @@ class CarlaVehicleSpawner(Node):
         self.spawned_actors.append(gnss)
         
         self.get_logger().info('IMU and GNSS attached.')
+
+    def camera_lidar_sensors(self):
+        # camera & LiDAR blueprints
+        camera_bp = self.blueprint_library.find('sensor.camera.rgb')
+        lidar_bp = self.blueprint_library.find('sensor.lidar.ray_cast')
+
+        # configure attributes for both sensors
+        camera_bp.set_attribute('role_name', 'front_camera')
+        camera_bp.set_attribute('sensor_tick', '0.1')
+        camera_bp.set_attribute('image_size_x', '800')
+        camera_bp.set_attribute('image_size_y', '600')
+        camera_bp.set_attribute('fov', '90.0')
+
+        lidar_bp.set_attribute('role_name', 'top_lidar')
+        lidar_bp.set_attribute('sensor_tick', '0.1')
+        lidar_bp.set_attribute('channels', '32')
+        lidar_bp.set_attribute('points_per_second', '100000')
+        lidar_bp.set_attribute('rotation_frequency', '10.0')
+
+        # position the camera and LiDAR relative to the vehicle's center
+        camera_transform = carla.Transform(carla.Location(x=1.5, z=1.2))
+        lidar_transform = carla.Transform(carla.Location(x=0.0, z=1.5))
+
+        # spawn the sensors and attach them to the ego vehicle
+        self.camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.ego_vehicle)
+        self.lidar = self.world.spawn_actor(lidar_bp, lidar_transform, attach_to=self.ego_vehicle)
+        
+        # add the sensors to the list of spawned actors for cleanup later
+        self.spawned_actors.append(self.camera)
+        self.spawned_actors.append(self.lidar)
+        
+        self.get_logger().info('Camera (1080p) and 32-Channel LiDAR attached.')
 
     def update_spectator_view(self, snapshot):
         """continuously updates the CARLA server viewport to follow the ego vehicle."""

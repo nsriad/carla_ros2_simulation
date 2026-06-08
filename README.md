@@ -63,7 +63,7 @@ Navigate to your CARLA installation directory and select the mode appropriate fo
 Activate the Python virtual environment:
 
 ```bash
-source ~/carla_env/bin/activate
+source ~/carla_simulation_ws/carla_env/bin/activate
 ```
 
 #### Data Collection / Heavy Sensor Configuration (10 FPS)
@@ -87,6 +87,7 @@ town:=Town10HD_Opt \
 timeout:=30 \
 fixed_delta_seconds:=0.033
 ```
+*For 60 FPS, use `fixed_delta_seconds:=0.016`.
 
 ---
 
