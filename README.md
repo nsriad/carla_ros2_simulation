@@ -14,6 +14,27 @@ A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for mult
 
 - IMU
 - GNSS
+- Front Camera (RGB)
+- Top LiDAR (32-Channel)
+
+---
+
+## Outputs & Data Visualization
+
+The following visualizers demonstrate the data extracted from ros bag data file.
+
+### LiDAR Point Cloud
+Distance-based color mapping of the 32-channel `PointCloud2` messages, normalized for spatial headway analysis. First 1000 pcd files chosen with 4 files intervals to make the following gif.
+![LiDAR Timelapse](asset/lidar_headway_timelapse.gif)
+
+### Camera Frame
+Front-facing camera frames. First 1000 frames chosen with 4 frame intervals to make the following gif.
+
+![Camera Preview](asset/simulation_preview.gif)
+
+### IMU sensor
+Extracted linear acceleration data plot. 
+[View the IMU Acceleration Plot (PDF)](asset/acceleration_plot.pdf)
 
 ---
 
