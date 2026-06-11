@@ -42,7 +42,7 @@ A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for mult
 The core ROS 2 package in this repository is `carla_ros_sim`, which contains:
 * **`vehicle_spawner` node:** Handles the spawning of the ego vehicle (Tesla Model 3), the leader vehicle (Lincoln MKZ), and attaches all multimodal sensors. Route management and autopilot logic are also managed here.
 * **`lidar_headway_estimator` node:** Subscribes to the ego vehicle's LiDAR point cloud in real-time, applies bounding box filtering, and estimates the space headway to the leader vehicle.
-* **Post-Processing Scripts:** A suite of Python tools to extract, synchronize, and visualize data from ROS bags into standard `.csv` and `.pcd` formats.
+* **Post-Processing Scripts:** A suite of Python tools to extract, synchronize, and visualize data from ROS bags into standard `.png`, `.csv` and `.pcd` formats.
 
 ---
 
@@ -82,68 +82,47 @@ The pipeline is designed to run across **5 terminals**.
 
 ### Terminal 1: Launch CARLA Server
 
-Navigate to your CARLA installation directory and select the mode appropriate for your workflow.
-
-#### Data Collection Mode (Maximum Performance)
+Navigate to your CARLA installation directory and launch the simulation environment:
 
 ```bash
-./CarlaUE4.sh -RenderOffScreen
+./CarlaUE4.sh
 ```
-
-#### Testing Mode (Low Memory Usage)
-
-```bash
-./CarlaUE4.sh -quality-level=Low
-```
-
-#### High Quality Mode (Maximum Visual Quality)
-
-```bash
-./CarlaUE4.sh -quality-level=Epic
-```
+*Note: Append `-RenderOffScreen` for maximum performance during data collection, `-quality-level=Low` for testing with low memory usage, or `-quality-level=Epic` for maximum visual quality.*
 
 ---
 
 ### Terminal 2: Launch CARLA ROS Bridge
 
-Activate the Python virtual environment:
+Navigate to your CARLA ROS bridge workspace and source its installation to make the launch files available. Then, launch the bridge (defaulted to 10 FPS for synchronized RGB and LiDAR data collection):
 
 ```bash
-source ~/carla_simulation_ws/carla_env/bin/activate
-```
+source ~/carla_ros_bridge/install/setup.bash
 
-#### Data Collection / Heavy Sensor Configuration (10 FPS)
-
-Recommended for synchronized RGB and LiDAR data collection.
-
-```bash
 ros2 launch carla_ros_bridge carla_ros_bridge.launch.py \
 town:=Town10HD_Opt \
 timeout:=30 \
 fixed_delta_seconds:=0.1
 ```
 
-#### For Smooth Simulation (30 FPS)
-
-Use only when heavy sensor streams are temporarily disabled.
-
-```bash
-ros2 launch carla_ros_bridge carla_ros_bridge.launch.py \
-town:=Town10HD_Opt \
-timeout:=30 \
-fixed_delta_seconds:=0.033
-```
-*For 60 FPS, use `fixed_delta_seconds:=0.016`.
+*Note: For smoother simulation when heavy sensor streams are disabled, adjust `fixed_delta_seconds` to `0.033` (30 FPS) or `0.016` (60 FPS).*
 
 ---
 
 ### Terminal 3: Launch Vehicle Spawner
 
-Activate the ROS 2 workspace and start the ego vehicle with sensors.
+First, activate the dedicated Python virtual environment. This environment isolates the CARLA Python API and specific package versions (like NumPy 1.x) required to prevent cv_bridge incompatibilities during image extraction.
 
 ```bash
-source install/setup.bash
+source ~/carla_simulation_ws/carla_env/bin/activate
+```
 
+*Note: The system is configured so that ROS 2 continues to utilize the global, OS-level Python installation for its core execution and hardware interfacing, while drawing only the simulation-specific dependencies from this active virtual environment.*
+
+Next, navigate to the local ROS 2 workspace, source it, and start the ego vehicle with its sensors:
+
+```bash
+cd ~/carla_simulation_ws
+source install/setup.bash
 ros2 run carla_ros_sim vehicle_spawner
 ```
 
@@ -177,7 +156,22 @@ ros2 run rqt_plot rqt_plot /carla/tesla_ego/gnss_sensor/latitude /carla/tesla_eg
 
 ## Data Post-Processing
 
-Sensor data is extracted directly from the timestamped ROS bag folders. Python parsers generate `.csv` files and Open3D point clouds directly into the run directory:
+Navigate to the following directory `cd data_analysis/` and run sensor-specific parser (for example: `python camera_parser.py`).
+
+```
+.
+├── camera_parser.py
+├── data
+│   └── headway_log_new.csv
+├── generate_cam_gif.py
+├── headway_analysis.py
+├── imu_gnss_parser.py
+├── lidar_animator.py
+├── lidar_parser.py
+└── lidar_visualizer.py
+```
+
+Sensor data is extracted directly from the timestamped ROS bag folders. Python parsers generate camera frames as `.png` format, `.csv` files and Open3D point clouds `.pcd` directly into the run directory:
 
 ```text
 data/
@@ -187,6 +181,8 @@ data/
     ├── processed_imu_gnss/
     └── processed_headway/
 ```
+
+After the sensor-specific data extracted, then to visualize, you can run `generate_cam_gif.py`, `lidar_animator.py` or `lidar_visualizer.py`.
 
 ## Outputs & Data Visualization
 
