@@ -19,19 +19,21 @@ plt.rcParams.update({
 })
 
 def main():
-    # dataset path
-    bag_path = '../data/multimodal_dataset_20260608_125624'
-    output_dir = '../data/processed_imu_gnss'
-    
-    # create the output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    # define paths
+    bag_dir = '../data/multimodal_dataset_20260611_121415'
+
+    # output directly inside the run's folder
+    out_dir = os.path.join(bag_dir, 'processed_imu_gnss')
+
+    # create output directories
+    os.makedirs(out_dir, exist_ok=True)
     
     typestore = get_typestore(Stores.ROS2_HUMBLE)
     imu_data, gnss_data = [], []
 
-    print(f"Extracting imu gnss sensor data from: {bag_path}")
+    print(f"Extracting imu gnss sensor data from: {bag_dir}")
     
-    with Reader(bag_path) as reader:
+    with Reader(bag_dir) as reader:
         for connection, timestamp, rawdata in reader.messages():
             # Skip messages that aren't IMU or GNSS
             if connection.topic not in ['/carla/tesla_ego/imu_sensor', '/carla/tesla_ego/gnss_sensor']:
@@ -68,8 +70,8 @@ def main():
     df_gnss['time'] -= t0
 
     # saving data to CSV for future reference
-    imu_csv = os.path.join(output_dir, 'imu_data.csv')
-    gnss_csv = os.path.join(output_dir, 'gnss_data.csv')
+    imu_csv = os.path.join(out_dir, 'imu_data.csv')
+    gnss_csv = os.path.join(out_dir, 'gnss_data.csv')
     df_imu.to_csv(imu_csv, index=False)
     df_gnss.to_csv(gnss_csv, index=False)
     
@@ -91,7 +93,7 @@ def main():
     ax.grid(True, linestyle='--', alpha=0.6)
 
     # save as pdf
-    plot_path = os.path.join(output_dir, 'acceleration_plot.pdf')
+    plot_path = os.path.join(out_dir, 'acceleration_plot.pdf')
     plt.savefig(plot_path, format='pdf', bbox_inches='tight')
     print(f"Plot saved to {plot_path}")
     

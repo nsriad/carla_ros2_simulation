@@ -7,8 +7,10 @@ from rosbags.rosbag2 import Reader
 from rosbags.typesys import Stores, get_typestore
 
 # define paths
-bag_dir = '../data/multimodal_dataset_20260608_125624'
-out_dir = '../data/processed_lidar'
+bag_dir = '../data/multimodal_dataset_20260611_121415'
+
+# output directly inside the run's folder
+out_dir = os.path.join(bag_dir, 'processed_lidar')
 pcd_dir = os.path.join(out_dir, 'pointclouds')
 lidar_topic = '/carla/tesla_ego/top_lidar'
 

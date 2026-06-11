@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vehicle_spawner = carla_ros_sim.vehicle_spawner:main',
+            'lidar_headway_estimator = carla_ros_sim.lidar_headway_estimator:main',
         ],
     },
 )

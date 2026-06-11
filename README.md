@@ -10,31 +10,17 @@ A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for mult
 
 - Tesla Model 3 (`role_name: tesla_ego`)
 
+### Leader Vehicle
+
+- Lincoln MKZ 2020 (`role_name: leader`)
+- Predefined 1km route waypoint navigation
+
 ### Sensors
 
 - IMU
 - GNSS
 - Front Camera (RGB)
 - Top LiDAR (32-Channel)
-
----
-
-## Outputs & Data Visualization
-
-The following visualizers demonstrate the data extracted from ros bag data file.
-
-### LiDAR Point Cloud
-Distance-based color mapping of the 32-channel `PointCloud2` messages, normalized for spatial headway analysis. First 1000 pcd files chosen with 4 files intervals to make the following gif.
-![LiDAR Timelapse](asset/lidar_headway_timelapse.gif)
-
-### Camera Frame
-Front-facing camera frames. First 1000 frames chosen with 4 frame intervals to make the following gif.
-
-![Camera Preview](asset/simulation_preview.gif)
-
-### IMU sensor
-Extracted linear acceleration data plot. 
-[View the IMU Acceleration Plot (PDF)](asset/acceleration_plot.pdf)
 
 ---
 
@@ -51,9 +37,48 @@ Extracted linear acceleration data plot.
 
 ---
 
+## Package Overview
+
+The core ROS 2 package in this repository is `carla_ros_sim`, which contains:
+* **`vehicle_spawner` node:** Handles the spawning of the ego vehicle (Tesla Model 3), the leader vehicle (Lincoln MKZ), and attaches all multimodal sensors. Route management and autopilot logic are also managed here.
+* **`lidar_headway_estimator` node:** Subscribes to the ego vehicle's LiDAR point cloud in real-time, applies bounding box filtering, and estimates the space headway to the leader vehicle.
+* **Post-Processing Scripts:** A suite of Python tools to extract, synchronize, and visualize data from ROS bags into standard `.csv` and `.pcd` formats.
+
+---
+
+## Installation & Workspace Setup
+
+### 1. Setup the ROS 2 Workspace
+Create a new workspace and clone the repository inside this directory:
+
+```bash
+mkdir -p ~/carla_simulation_ws
+cd ~/carla_simulation_ws
+git clone https://github.com/nsriad/carla_ros2_simulation.git
+```
+
+### 2. Install Python Dependencies
+The post-processing and visualization scripts require specific Python libraries. You can install them globally or within your dedicated `carla_env` virtual environment:
+
+```bash
+pip install pandas numpy open3d rosbags matplotlib pillow
+```
+
+### 3. Build the Package
+From the root of the cloned repository, build the package using `colcon`. Using the `--symlink-install` flag is recommended for Python packages so you do not have to rebuild every time you edit a script.
+
+```
+source /opt/ros/humble/setup.bash
+colcon build --packages-select carla_ros_sim --symlink-install
+```
+Once built, source the local setup file so the ROS 2 CLI can find your package. You must do this in every new terminal before running the nodes:
+```
+source install/setup.bash
+```
+
 ## Running the Simulation
 
-The pipeline is designed to run across **three terminals**.
+The pipeline is designed to run across **5 terminals**.
 
 ### Terminal 1: Launch CARLA Server
 
@@ -124,7 +149,19 @@ ros2 run carla_ros_sim vehicle_spawner
 
 ---
 
-### Terminal 4: To plot rqt live plot
+### Terminal 4: Data Collection (ROS Bag)
+
+To record synchronized multimodal sensor data, open a new terminal and run:
+
+```bash
+ros2 bag record -o "multimodal_dataset_$(date +%Y%m%d_%H%M%S)" \
+/carla/tesla_ego/front_camera/image \
+/carla/tesla_ego/top_lidar \
+/carla/tesla_ego/imu_sensor \
+/carla/tesla_ego/gnss_sensor
+```
+
+### Terminal 5: To plot rqt live plot
 
 To plot linear acceleration in real-time:
 
@@ -135,6 +172,37 @@ To plot your Latitude and Longitude moving in real-time:
 ```
 ros2 run rqt_plot rqt_plot /carla/tesla_ego/gnss_sensor/latitude /carla/tesla_ego/gnss_sensor/longitude
 ```
+
+---
+
+## Data Post-Processing
+
+Sensor data is extracted directly from the timestamped ROS bag folders. Python parsers generate `.csv` files and Open3D point clouds directly into the run directory:
+
+```text
+data/
+└── multimodal_dataset_YYYYMMDD_HHMMSS/
+    ├── processed_camera/
+    ├── processed_lidar/
+    ├── processed_imu_gnss/
+    └── processed_headway/
+```
+
+## Outputs & Data Visualization
+
+The following visualizers demonstrate the synchronized multimodal data extracted from the ROS bag logs.
+
+### Multimodal Sensor Grid
+Demonstration of the ego vehicle navigating the cluttered town environment. The left column displays the front-facing RGB camera, and the right column displays the corresponding 32-channel LiDAR `PointCloud2` data (color-mapped for spatial distance).
+
+| Scenario | Camera View | LiDAR Point Cloud |
+| :---: | :---: | :---: |
+| **Leader-<br>Follower<br>Tracking** | <img src="asset/simulation_preview.gif" height="250"> | <img src="asset/lidar_headway_timelapse.gif" height="250"> |
+| **Baseline<br>Navigation<br>(No&nbsp;Leader)** | <img src="asset/no_leader_simulation_preview.gif" height="250"> | <img src="asset/no_leader_lidar_headway_timelapse.gif" height="250"> |
+
+### IMU Sensor
+Extracted linear acceleration data capturing the ego vehicle's longitudinal and lateral dynamics. <br>
+[View the IMU Acceleration Plot (PDF)](asset/acceleration_plot.pdf)
 
 ---
 
@@ -207,6 +275,18 @@ self.world.on_tick(...)
 ```
 
 This ensures smooth and physically synchronized camera tracking.
+
+---
+
+### Traffic Manager Route Divergence
+
+**Issue**
+
+When using autopilot for multiple vehicles in the same lane, the Traffic Manager may independently choose different routes at intersections, causing the ego vehicle to lose the leader.
+
+**Resolution**
+
+Predefine a specific route using waypoints and force both vehicles to follow it. Adjust the ego vehicle's `vehicle_percentage_speed_difference` to prevent it from overtaking the leader at traffic lights.
 
 ---
 

@@ -8,8 +8,10 @@ from rosbags.typesys import Stores, get_typestore
 
 def main():
     # dataset path
-    bag_path = '../data/multimodal_dataset_20260608_125624'
-    output_dir = '../data/processed_camera'
+    bag_path = '../data/multimodal_dataset_20260611_121415'
+    
+    # output directly inside the run's folder
+    output_dir = os.path.join(bag_path, 'processed_camera')
     images_dir = os.path.join(output_dir, 'images')
     
     # create output directories

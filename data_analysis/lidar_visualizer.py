@@ -2,7 +2,10 @@ import os
 import open3d as o3d
 
 # define path to the extracted point clouds
-pcd_dir = '../data/processed_lidar/pointclouds'
+run_dir = '../data/multimodal_dataset_20260611_121415'
+
+# define path to the extracted point clouds directly inside the run's folder
+pcd_dir = os.path.join(run_dir, 'processed_lidar', 'pointclouds')
 sample_file = 'scan_000000.pcd'
 sample_path = os.path.join(pcd_dir, sample_file)
 

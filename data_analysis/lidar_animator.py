@@ -5,13 +5,18 @@ import open3d as o3d
 import matplotlib.pyplot as plt
 from PIL import Image
 
-# define paths
-pcd_dir = '../data/processed_lidar/pointclouds'
-out_gif = '../data/processed_lidar/lidar_headway_timelapse.gif'
+import os
 
-# grab first 100 pcd files
+# dataset path
+run_dir = '../data/multimodal_dataset_20260611_121415'
+
+# define paths inside the run's lidar folder
+pcd_dir = os.path.join(run_dir, 'processed_lidar', 'pointclouds')
+out_gif = os.path.join(run_dir, 'processed_lidar', 'lidar_headway_timelapse.gif')
+
+# grab first 1000 pcd files
 n_pcds = 1000
-pcd_files = sorted(glob.glob(os.path.join(pcd_dir, '*.pcd')))[:n_pcds:4]  # downsample to 25fps from 100fps
+pcd_files = sorted(glob.glob(os.path.join(pcd_dir, '*.pcd')))[:n_pcds:4]  # skipping every 4 frames to get reduced gif file size
 
 if not pcd_files:
     print("error: no pcd files found")

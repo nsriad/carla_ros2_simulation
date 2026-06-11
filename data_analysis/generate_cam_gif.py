@@ -3,14 +3,18 @@ import os
 from PIL import Image
 
 def main():
-    images_dir = '../data/processed_camera/images'
-    output_gif = '../data/processed_camera/simulation_preview.gif'
+    # dataset path
+    run_dir = '../data/multimodal_dataset_20260611_121415'
+    
+    # route inputs and outputs directly inside the run's camera folder
+    images_dir = os.path.join(run_dir, 'processed_camera', 'images')
+    output_gif = os.path.join(run_dir, 'processed_camera', 'simulation_preview.gif')
     
     # get and sort frame list
     frames = [f for f in os.listdir(images_dir) if f.endswith('.png')]
     frames.sort()
     
-    # define slice (5s at 100fps)
+    # define slice)
     start_idx = 0000
     end_idx = 1000
     
