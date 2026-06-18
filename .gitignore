@@ -2,6 +2,7 @@
 build/
 install/
 log/
+archive/
 
 # Python Virtual Environments and Cache
 carla_env/
