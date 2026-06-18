@@ -5,10 +5,14 @@ import pandas as pd
 import cv2
 from rosbags.rosbag2 import Reader
 from rosbags.typesys import Stores, get_typestore
+import sys
 
 def main():
-    # dataset path
-    bag_path = '../data/multimodal_dataset_20260611_121415'
+    # dataset path from cmdline argument
+    if len(sys.argv) < 2:
+        print(f"Usage: python3 {sys.argv} <dataset_name>")
+        sys.exit(1)
+    bag_path = '../data/' + sys.argv[1]
     
     # output directly inside the run's folder
     output_dir = os.path.join(bag_path, 'processed_camera')
@@ -66,7 +70,7 @@ def main():
     df_meta.to_csv(csv_path, index=False)
     
     print(f"\nSuccess! Saved {frame_count} images to {images_dir}")
-    print(f"Saved synchronization metadata to {csv_path}")
+    print(f"Saved metadata to {csv_path}")
 
 if __name__ == '__main__':
     main()

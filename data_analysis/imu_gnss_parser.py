@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -20,7 +21,10 @@ plt.rcParams.update({
 
 def main():
     # define paths
-    bag_dir = '../data/multimodal_dataset_20260611_121415'
+    if len(sys.argv) < 2:
+        print(f"Usage: python3 {sys.argv} <dataset_name>")
+        sys.exit(1)
+    bag_dir = '../data/' + sys.argv[1]
 
     # output directly inside the run's folder
     out_dir = os.path.join(bag_dir, 'processed_imu_gnss')
@@ -80,7 +84,7 @@ def main():
 
     # generate plot
     print("Generating plot...")
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(10, 4))
     
     # plot X and Y acceleration (using a deep purple for the primary forward axis)
     ax.plot(df_imu['time'], df_imu['accel_x'], label=r'Forward Accel ($a_x$)', color='#663399', linewidth=1.5)
@@ -97,7 +101,7 @@ def main():
     plt.savefig(plot_path, format='pdf', bbox_inches='tight')
     print(f"Plot saved to {plot_path}")
     
-    plt.show()
+    # plt.show()
 
 if __name__ == '__main__':
     main()

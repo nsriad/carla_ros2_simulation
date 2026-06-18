@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 import os
 from PIL import Image
+import sys
 
 def main():
     # dataset path
-    run_dir = '../data/multimodal_dataset_20260611_121415'
-    
+    if len(sys.argv) < 2:
+        print(f"Usage: python3 {sys.argv} <dataset_name>")
+        sys.exit(1)
+    run_dir = '../data/' + sys.argv[1]
+
     # route inputs and outputs directly inside the run's camera folder
     images_dir = os.path.join(run_dir, 'processed_camera', 'images')
     output_gif = os.path.join(run_dir, 'processed_camera', 'simulation_preview.gif')
@@ -14,7 +18,7 @@ def main():
     frames = [f for f in os.listdir(images_dir) if f.endswith('.png')]
     frames.sort()
     
-    # define slice)
+    # define slice
     start_idx = 0000
     end_idx = 1000
     

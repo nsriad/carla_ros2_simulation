@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from datetime import datetime
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs_py.point_cloud2 as pc2
 from std_msgs.msg import Float32
@@ -24,6 +25,10 @@ class LidarHeadwayEstimator(Node):
         # publisher for headway distance
         self.headway_pub = self.create_publisher(
             Float32, '/carla/tesla_ego/headway', 10)
+        
+        # publisher for filtered roi point cloud
+        self.roi_pub = self.create_publisher(
+            PointCloud2, '/carla/tesla_ego/top_lidar_roi', 10)
 
         # initialize to get the latest ground truth and its timestamp
         self.latest_gt = -1.0
@@ -32,7 +37,8 @@ class LidarHeadwayEstimator(Node):
         # setup csv file in the data folder
         # added gt_age_s column to track how stale the ground truth is
         # relative to each lidar scan (ideally < 0.1s at 10Hz sync)
-        self.csv_path = 'data/headway_log.csv'
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.csv_path = f'data/headway_csv/headway_log_{timestamp_str}.csv'
         os.makedirs(os.path.dirname(self.csv_path), exist_ok=True)
 
         with open(self.csv_path, 'w', newline='') as f:
@@ -48,10 +54,23 @@ class LidarHeadwayEstimator(Node):
         self.latest_gt_time = time.time()
 
     def lidar_callback(self, msg):
-        # use read_points_numpy for a plain (N, 3) float array — faster than
-        # list(read_points()) and avoids structured-array indexing inconsistencies
-        # across different ROS2 / sensor_msgs_py versions
+        # use read_points_numpy for a plain (N, 3) float array 
         cloud_data = pc2.read_points_numpy(msg, field_names=("x", "y", "z"), skip_nans=True)
+
+        self.get_logger().info(
+            f'Fields: {[f.name for f in msg.fields]} | '
+            f'Total points: {msg.width * msg.height}',
+            throttle_duration_sec=2.0
+        )
+        self.get_logger().info(f'Points after read: {len(cloud_data)}', throttle_duration_sec=2.0)
+
+        if len(cloud_data) > 0:
+            self.get_logger().info(
+                f'X: {cloud_data[:,0].min():.2f} to {cloud_data[:,0].max():.2f} | '
+                f'Y: {cloud_data[:,1].min():.2f} to {cloud_data[:,1].max():.2f} | '
+                f'Z: {cloud_data[:,2].min():.2f} to {cloud_data[:,2].max():.2f}',
+                throttle_duration_sec=2.0
+            )
 
         # exit if cloud is empty
         if len(cloud_data) == 0:
@@ -62,9 +81,9 @@ class LidarHeadwayEstimator(Node):
         points_z = cloud_data[:, 2]
 
         # define region of interest (roi)
-        min_x, max_x = 2.0, 50.0    # forward range in front of ego bumper
-        min_y, max_y = -3.0, 3.0    # widened lateral window
-        min_z, max_z = -1.0, 3.0    # vertical range covering full vehicle height
+        min_x, max_x = 3.5, 80.0    # forward range in front of ego bumper
+        min_y, max_y = -1.5, 1.5    # widened lateral window
+        min_z, max_z = -2.0, 1.0    # vertical range covering full vehicle height
 
         # apply bounding box filter using plain array column indices
         mask = (
@@ -74,13 +93,19 @@ class LidarHeadwayEstimator(Node):
         )
 
         roi_points_x = points_x[mask]
+        roi_points_y = points_y[mask]
 
-        # calculate headway
+        # publish roi point cloud for bag recording and visualization
+        if len(roi_points_x) > 0:
+            roi_points = cloud_data[mask]
+            roi_msg = pc2.create_cloud_xyz32(msg.header, roi_points.tolist())
+            self.roi_pub.publish(roi_msg)
+
         if len(roi_points_x) == 0:
-            headway = -1.0  # clear road
+            headway = -1.0
         else:
-            # subtract 2.35m for ego front bumper offset
-            headway = float(np.min(roi_points_x)) - 2.35
+            distances = np.sqrt(roi_points_x**2 + roi_points_y**2)
+            headway = float(np.min(distances)) - 2.35
 
         # publish the calculated headway
         headway_msg = Float32()

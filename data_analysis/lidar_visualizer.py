@@ -1,12 +1,16 @@
 import os
+import sys
 import open3d as o3d
 
 # define path to the extracted point clouds
-run_dir = '../data/multimodal_dataset_20260611_121415'
+if len(sys.argv) < 2:
+        print(f"Usage: python3 {sys.argv} <dataset_name>")
+        sys.exit(1)
+run_dir = '../data/' + sys.argv[1]
 
 # define path to the extracted point clouds directly inside the run's folder
 pcd_dir = os.path.join(run_dir, 'processed_lidar', 'pointclouds')
-sample_file = 'scan_000000.pcd'
+sample_file = 'scan_000300.pcd'
 sample_path = os.path.join(pcd_dir, sample_file)
 
 # check if file exists before loading

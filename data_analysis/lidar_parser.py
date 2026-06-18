@@ -1,5 +1,6 @@
 import os
 import struct
+import sys
 import numpy as np
 import pandas as pd
 import open3d as o3d
@@ -7,12 +8,15 @@ from rosbags.rosbag2 import Reader
 from rosbags.typesys import Stores, get_typestore
 
 # define paths
-bag_dir = '../data/multimodal_dataset_20260611_121415'
+if len(sys.argv) < 2:
+        print(f"Usage: python3 {sys.argv} <dataset_name>")
+        sys.exit(1)
+bag_dir = '../data/' + sys.argv[1]
 
 # output directly inside the run's folder
 out_dir = os.path.join(bag_dir, 'processed_lidar')
 pcd_dir = os.path.join(out_dir, 'pointclouds')
-lidar_topic = '/carla/tesla_ego/top_lidar'
+lidar_topic = '/carla/tesla_ego/top_lidar_roi'
 
 # create output directories
 os.makedirs(pcd_dir, exist_ok=True)

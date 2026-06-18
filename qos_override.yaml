@@ -1,0 +1,13 @@
+/carla/tesla_ego/front_camera/image:
+  reliability: best_effort
+  durability: volatile
+/carla/tesla_ego/top_lidar:
+  reliability: best_effort
+  durability: volatile
+/carla/tesla_ego/imu_sensor:
+  reliability: best_effort
+  durability: volatile
+/carla/tesla_ego/gnss_sensor:
+  reliability: best_effort
+  durability: volatile
+  

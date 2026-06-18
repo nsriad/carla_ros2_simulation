@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -21,10 +22,14 @@ plt.rcParams.update({
 
 def main():
     # dataset path
-    run_dir = '../data/multimodal_dataset_20260611_121415'
-    
+    # if len(sys.argv) < 2:
+    #     print(f"Usage: python3 {sys.argv} <dataset_name>")
+    #     sys.exit(1)
+    # run_dir = '../data/' + sys.argv[1]
+    run_dir = '../data/straight_60s_multimodal_dataset_20260618_111655' 
+
     # input raw csv and output directory inside the run's folder
-    csv_path = 'data/headway_log_new.csv'
+    csv_path = '../data/headway_csv/headway_log_20260618_111655.csv'
     output_dir = os.path.join(run_dir, 'processed_headway')
 
     # create the output directory if it doesn't exist
@@ -57,24 +62,25 @@ def main():
     fig1, ax1 = plt.subplots(figsize=(10, 4))
 
     # shade every interval where LiDAR detection was lost
-    in_gap    = False
-    gap_start = None
-    for _, row in df.iterrows():
-        if row['lidar_headway_m'] < 0 and not in_gap:
-            gap_start = row['time']
-            in_gap    = True
-        elif row['lidar_headway_m'] >= 0 and in_gap:
-            ax1.axvspan(gap_start, row['time'], color='#ffcccc', alpha=0.45, lw=0)
-            in_gap = False
-    if in_gap:
-        ax1.axvspan(gap_start, df['time'].iloc[-1], color='#ffcccc', alpha=0.45, lw=0)
+    # in_gap    = False
+    # gap_start = None
+    # for _, row in df.iterrows():
+    #     if row['lidar_headway_m'] < 0 and not in_gap:
+    #         gap_start = row['time']
+    #         in_gap    = True
+    #     elif row['lidar_headway_m'] >= 0 and in_gap:
+    #         ax1.axvspan(gap_start, row['time'], color='#ffcccc', alpha=0.45, lw=0)
+    #         in_gap = False
+    # if in_gap:
+    #     ax1.axvspan(gap_start, df['time'].iloc[-1], color='#ffcccc', alpha=0.45, lw=0)
 
-    ax1.plot(df['time'], df['gt_headway_m'].where(df['gt_headway_m'] >= 0), color='steelblue', linewidth=1.0, label=r'Ground Truth $d_{\mathrm{gt}}$')
-    ax1.plot(valid['time'], valid['lidar_headway_m'], color='#663399', linewidth=1.0, alpha=0.85, label=r'LiDAR Estimate $\hat{d}$')
+    ax1.plot(df['time'], df['gt_headway_m'].where(df['gt_headway_m'] >= 0), color='blue', linewidth=1.0, label=r'Ground Truth $d_{\mathrm{gt}}$')
+    ax1.plot(valid['time'], valid['lidar_headway_m'], color='red', linestyle='--',linewidth=1.0, alpha=1, label=r'LiDAR Estimate $\hat{d}$')
 
-    gap_patch = mpatches.Patch(color='#ffcccc', alpha=0.7, label=r'Detection Lost')
-    handles, labels = ax1.get_legend_handles_labels()
-    ax1.legend(handles + [gap_patch], labels + [gap_patch.get_label()], loc='upper right', framealpha=0.9)
+    # gap_patch = mpatches.Patch(color='#ffcccc', alpha=0.7, label=r'Detection Lost')
+    # handles, labels = ax1.get_legend_handles_labels()
+    # ax1.legend(handles + [gap_patch], labels + [gap_patch.get_label()], loc='upper right', framealpha=0.9)
+    ax1.legend(loc='lower right', framealpha=0.9)
 
     ax1.set_title(r'\textbf{Space Headway Over Time}')
     ax1.set_xlabel(r'Time ($s$)')
