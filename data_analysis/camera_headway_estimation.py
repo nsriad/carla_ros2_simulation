@@ -22,7 +22,7 @@ def main():
     
     print("Loading detections...")
     
-    # 1. Route everything based on your parameter
+    # directory location
     base_dir = args.camera_dir
     images_dir = os.path.join(base_dir, "images")
     detections_path = os.path.join(base_dir, "detections.csv")
@@ -31,14 +31,14 @@ def main():
         print(f"ERROR: Could not find {detections_path}. Did you run yolo_detection.py first?")
         return
         
-    # 2. Load the boxes
+    # load the boxes from yolo
     df = pd.read_csv(detections_path)
     
-    # Filter for the leader vehicle in each frame (the one lowest in the image)
+    # filter for the leader vehicle in each frame
     leader_idx = df.groupby('frame')['bbox_bottom_center_y'].idxmax()
     leaders = df.loc[leader_idx].copy()
     
-    # Load ZoeDepth
+    # load zoedepth model
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\nLoading ZoeDepth model on {device} (this takes real-world distance)...")
     zoe = torch.hub.load("isl-org/ZoeDepth", "ZoeD_K", pretrained=True, trust_repo=True).to(device).eval()    
@@ -52,26 +52,26 @@ def main():
         if not os.path.exists(img_path):
             continue
             
-        # Read image
+        # read image
         img = cv2.imread(img_path)
         if img is None:
             continue
             
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
-        # Get depth map in meters
+        # depth map in meters
         with torch.no_grad():
             depth_map = zoe.infer_pil(img_rgb)
             
-        # Get coordinates of the bottom-center of the bounding box
+        # coordinates of the bottom-center of the bounding box
         x = int(row['bbox_bottom_center_x'])
         y = int(row['bbox_bottom_center_y'])
         
-        # Safety check: ensure coordinates are within the image boundaries
+        # ensure coordinates are within the image boundaries
         y = min(y, depth_map.shape[0] - 1)
         x = min(x, depth_map.shape[1] - 1)
         
-        # Extract the distance at exactly that pixel
+        # distance at exactly that pixel
         headway_meters = depth_map[y, x]
         
         results.append({
@@ -79,7 +79,7 @@ def main():
             'camera_headway_m': round(float(headway_meters), 3)
         })
 
-    # 3. Save the meaningful data back to the same folder you passed in
+    # save data back to the same folder
     if results:
         out_df = pd.DataFrame(results)
         out_csv_path = os.path.join(base_dir, "camera_headway_estimates.csv")

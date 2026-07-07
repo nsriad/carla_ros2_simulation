@@ -12,7 +12,7 @@ from tqdm import tqdm
 import torch
 from ultralytics import YOLO
 
-# COCO vehicle class IDs
+# coco vehicle class IDs
 VEHICLE_CLASSES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 
 def parse_args():
@@ -27,7 +27,7 @@ def parse_args():
 def main():
     args = parse_args()
     
-    # 1. Find frames
+    # find frames
     exts = ("*.png", "*.jpg", "*.jpeg")
     all_frames = []
     for ext in exts:
@@ -37,22 +37,25 @@ def main():
         print(f"ERROR: No image files found in {args.frames_dir}")
         sys.exit(1)
 
-    # Sample frames
-    step = max(1, len(all_frames) // args.num_frames)
-    sampled = [str(all_frames[i]) for i in range(0, len(all_frames), step)][:args.num_frames]
+    # selected frames
+    # step = max(1, len(all_frames) // args.num_frames)
+    # sampled = [str(all_frames[i]) for i in range(0, len(all_frames), step)][:args.num_frames]
+
+    # use all frames
+    sampled = [str(f) for f in all_frames]
     
-    # 2. Load YOLO with CUDA
+    # load yolo with cuda
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\nLoading YOLOv8 on {device}...")
     model = YOLO(args.model).to(device)
 
-    # 3. Setup output
+    # output directory
     base_dir = str(Path(args.frames_dir).parent)
     annotated_dir = os.path.join(base_dir, "annotated")
     os.makedirs(annotated_dir, exist_ok=True)
     all_detections = []
 
-    # 4. Run inference
+    # run inference
     for fpath in tqdm(sampled, desc="Detecting vehicles"):
         fname = os.path.basename(fpath)
         img = cv2.imread(fpath)
@@ -68,7 +71,7 @@ def main():
             x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
             conf = float(box.conf[0].item())
             
-            # Save data
+            # save data
             all_detections.append({
                 "frame": fname,
                 "class": VEHICLE_CLASSES[cls_id],
@@ -77,14 +80,14 @@ def main():
                 "bbox_bottom_center_y": y2
             })
             
-            # Draw box
+            # draw box
             cv2.rectangle(ann_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(ann_img, f"{VEHICLE_CLASSES[cls_id]} {conf:.2f}", 
                         (x1, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                         
         cv2.imwrite(os.path.join(annotated_dir, fname), ann_img)
 
-    # 5. Save results
+    # save results
     if all_detections:
         df = pd.DataFrame(all_detections)
         df.to_csv(os.path.join(base_dir, "detections.csv"), index=False)
