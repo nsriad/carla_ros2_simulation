@@ -22,3 +22,5 @@ __pycache__/
 # Ignore ROS 2 bag recordings and large dataset files
 data/
 rosbag2_*/
+
+*.pt
