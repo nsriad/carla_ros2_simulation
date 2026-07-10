@@ -212,6 +212,8 @@ The datetime argument matches the folder name suffix: `multimodal_dataset_202606
 | `generate_cam_gif.py` | Stitches camera frames into an animated GIF |
 | `lidar_animator.py` | Renders LiDAR point cloud frames into an animated GIF with ego marker and forward axis |
 | `lidar_visualizer.py` | Static single-frame LiDAR point cloud visualization |
+| `find_multi_car_frame.py` | Flags frames where YOLO detected more than one vehicle, for reviewing duplicate/false-positive detections |
+| `missing_leader_frame.py` | Flags frames with no valid leader-vehicle detection (below confidence threshold or occluded) |
 
 ### Output Structure
 
@@ -225,6 +227,90 @@ data/
 ```
 ---
 
+## YOLOv8 Vehicle Detection on CARLA Frames
+
+Pipeline order: `yolo_detection.py` → `camera_headway_estimation.py` → `camera_calibrate.py`
+
+```bash
+# install dependencies
+bash setup.sh
+
+# run detections on your CARLA frames
+# adjust the path according to the actual frames directory
+python3 yolo_detection.py \
+  --frames_dir ../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera/images \
+  --conf_thresh 0.3 \
+  --exclude_bottom_px 40
+```
+
+### Key Flags
+
+| Flag | Description |
+|---|---|
+| `--conf_thresh` | YOLO detection confidence threshold (default: 0.30) |
+| `--exclude_bottom_px` | Masks out this many pixels from the bottom of each frame before detection, to exclude the ego vehicle's own hood/bumper from being misdetected as a second vehicle. Check a few annotated images to pick the right value — the excluded region is shaded red in the output. Default: 0 (no masking) |
+| `--num_frames` | Number of frames to sample evenly across the sequence. Omit to run on all frames |
+| `--model` | YOLOv8 model variant (see table below) |
+
+### Model Options
+
+| Model       | Speed     | Accuracy | When to use                    |
+|-------------|-----------|----------|--------------------------------|
+| `yolov8n.pt`| ~5ms/img  | Good     | Default, fast iteration        |
+| `yolov8s.pt`| ~10ms/img | Better   | If nano misses some vehicles   |
+| `yolov8m.pt`| ~25ms/img | Best     | Final results for the paper    |
+
+Switch with `--model yolov8s.pt`.
+
+### Diagnostic Scripts
+
+| Script | Description |
+|---|---|
+| `find_multi_car_frame.py` | Flags frames where YOLO detected more than one vehicle, for reviewing duplicate/false-positive detections |
+| `missing_leader_frame.py` | Flags frames with no valid leader-vehicle detection (below confidence threshold or occluded) |
+
+### Output schema (detections.csv)
+
+| Column                | Description                                      |
+|-----------------------|--------------------------------------------------|
+| `frame`               | Filename                                         |
+| `class`               | car / truck / bus / motorcycle                   |
+| `confidence`          | Detection confidence [0, 1]                      |
+| `bbox_bottom_center_x`| Horizontal center of box bottom edge             |
+| `bbox_bottom_center_y`| Vertical position of box bottom (ground contact) |
+
+---
+
+## Depth Estimation with ZoeDepth
+
+This project uses the official ZoeDepth models loaded via PyTorch Hub. Depending on the environment, different model weights can be loaded:
+
+* **`ZoeD_K` (Default):** Trained on the KITTI dataset. Highly tuned for outdoor scenes and dashboard camera views. This is the default setting for our CARLA simulation pipeline.
+* **`ZoeD_N`:** Trained on the NYU-Depth-V2 dataset. Tuned specifically for indoor environments.
+* **`ZoeD_NK`:** A multi-headed model jointly trained on both NYU and KITTI datasets, capable of handling both indoor and outdoor domains.
+
+By default, the script loads `ZoeD_K` for optimal outdoor structural estimation:
+```python
+zoe = torch.hub.load("isl-org/ZoeDepth", "ZoeD_K", pretrained=True, trust_repo=True).to(device).eval()
+
+Run the following script:
+
+```bash
+python3 camera_headway_estimation.py \
+  --camera_dir ../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera
+```
+
+This uses `detections.csv` and produces a raw (uncalibrated) metric depth estimate per frame. To calibrate further and get a reliable depth estimate, run:
+
+```bash
+python3 camera_calibrate.py \
+  --gt_csv ../data/headway_csv/headway_log_20260618_102918.csv \
+  --cam_dir ../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera \
+  --gt_time_col timestamp \
+  --gt_dist_col gt_headway_m
+```
+
+---
 
 ## Outputs & Data Visualization
 
