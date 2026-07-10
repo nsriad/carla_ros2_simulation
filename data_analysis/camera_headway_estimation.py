@@ -13,7 +13,7 @@ def parse_args():
         "--camera_dir", 
         type=str, 
         required=True,
-        help="Path to the processed_camera directory containing 'images' and 'detections.csv'"
+        help="Path to the processed_camera directory containing 'images' and 'detections_0.3_excl40.csv'"
     )
     return parser.parse_args()
 
@@ -25,7 +25,7 @@ def main():
     # directory location
     base_dir = args.camera_dir
     images_dir = os.path.join(base_dir, "images")
-    detections_path = os.path.join(base_dir, "detections.csv")
+    detections_path = os.path.join(base_dir, "detections_0.3_excl40.csv")
     
     if not os.path.exists(detections_path):
         print(f"ERROR: Could not find {detections_path}. Did you run yolo_detection.py first?")
@@ -82,7 +82,7 @@ def main():
     # save data back to the same folder
     if results:
         out_df = pd.DataFrame(results)
-        out_csv_path = os.path.join(base_dir, "camera_headway_estimates.csv")
+        out_csv_path = os.path.join(base_dir, "camera_headway_estimates_0.3_excl40.csv")
         out_df.to_csv(out_csv_path, index=False)
         
         print(f"\nSuccess! Extracted actual distances for {len(out_df)} frames.")
