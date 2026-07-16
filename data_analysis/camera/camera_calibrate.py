@@ -1,31 +1,7 @@
 #!/usr/bin/env python3
-"""
-Calibrate camera headway estimate against ground truth, for ONE scenario:
-town04_leader_50_multimodal_dataset_20260618_102918
-
-Just three inputs:
-  1. Ground truth: data/headway_csv/headway_log_20260618_102918.csv
-  2. Camera estimate: .../processed_camera/camera_headway_estimates.csv
-  3. Camera timestamps: .../processed_camera/camera_timestamps.csv
-
-Steps:
-  1. Merge camera_headway_estimates.csv (frame, camera_headway_m) with
-     camera_timestamps.csv (frame_id, timestamp, timestamp_normalized) by frame number
-  2. Merge that against ground truth by nearest timestamp
-  3. Split into calibration (20%) / evaluation (80%)
-  4. Fit a linear correction: d_gt = a * d_cam + b, using calibration set only
-  5. Apply to evaluation set, report MAE/RMSE before and after correction
-
-USAGE:
-    python3 calibrate_single_scenario.py \\
-        --gt_csv ~/Nazmus_Shakib/Summer_26/carla_simulation_ws/data/headway_csv/headway_log_20260618_102918.csv \\
-        --cam_dir ~/Nazmus_Shakib/Summer_26/carla_simulation_ws/data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera
-
-If the script can't find the right columns in your ground truth CSV, it will
-print the columns it found so you can tell me the correct names.
-"""
 
 import argparse
+import glob
 import os
 import numpy as np
 import pandas as pd
@@ -75,7 +51,16 @@ def main():
 
     # load all the three files
     gt = pd.read_csv(args.gt_csv)
-    cam_est = pd.read_csv(os.path.join(args.cam_dir, "camera_headway_estimates_0.3_excl40.csv"))
+    est_files = glob.glob(os.path.join(args.cam_dir, "camera_headway_estimates_*.csv"))
+    if not est_files:
+        print(f"ERROR: no camera_headway_estimates_*.csv found in {args.cam_dir}. "
+              f"Run camera_headway_estimation.py first.")
+        return
+    cam_est_path = max(est_files, key=os.path.getmtime)
+    print(f"Using camera estimates file: {os.path.basename(cam_est_path)}")
+    suffix = os.path.basename(cam_est_path)[len("camera_headway_estimates_"):-len(".csv")]
+
+    cam_est = pd.read_csv(cam_est_path)
     cam_ts = pd.read_csv(os.path.join(args.cam_dir, "camera_timestamps.csv"))
 
     print(f"Ground truth columns : {list(gt.columns)}")
@@ -170,12 +155,12 @@ def main():
           .to_string(index=False))
 
     # save results
-    out_csv = os.path.join(output_dir, "camera_calibrated_0.3_excl40.csv")
+    out_csv = os.path.join(output_dir, f"camera_calibrated_{suffix}.csv")
     merged[["frame", time_col_cam, "camera_headway_m", "camera_corrected", dcol, "abs_error"]].to_csv(
         out_csv, index=False
     )
 
-    with open(os.path.join(output_dir, "calibration_report_0.3_excl40.txt"), "w") as f:
+    with open(os.path.join(output_dir, f"calibration_report_{suffix}.txt"), "w") as f:
         f.write(f"Fitted correction: d_gt = {a:.4f} * d_cam + {b:.4f}\n")
         f.write(f"Calibration frames: {len(x_calib)} | Evaluation frames: {len(x_eval)}\n\n")
         f.write(f"BEFORE correction: MAE={mae_raw:.3f}m RMSE={rmse_raw:.3f}m\n")
@@ -197,7 +182,7 @@ def main():
     axes[1].set_title(f"After (MAE={mae_corr:.2f}m)")
 
     plt.tight_layout()
-    plot_path = os.path.join(output_dir, "leader_50_calibration_0.3_excl40.pdf")
+    plot_path = os.path.join(output_dir, f"leader_50_calibration_{suffix}.pdf")
     plt.savefig(plot_path, format='pdf', bbox_inches="tight")
     plt.close()
 
@@ -210,15 +195,11 @@ def main():
     ax2.set_ylabel("Residual (m)")
     ax2.set_title("Residual over time")
     plt.tight_layout()
-    residual_path = os.path.join(output_dir, "leader_50_residual_vs_time_0.3_excl40.pdf")
+    residual_path = os.path.join(output_dir, f"leader_50_residual_vs_time_{suffix}.pdf")
     plt.savefig(residual_path, format='pdf', bbox_inches="tight")
     plt.close()
 
     print(f"\nSaved to {output_dir}/:")
-    print(f"  leader_50_calibration_0.3_excl40.pdf       <- before/after scatter, look at this first")
-    print(f"  leader_50_residual_vs_time_0.3_excl40.pdf  <- checks if error is time-correlated")
-    print(f"  camera_calibrated_0.3_excl40.csv           <- all frames with corrected values + error")
-    print(f"  calibration_report_0.3_excl40.txt")
 
 if __name__ == "__main__":
     main()

@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
+import argparse
+import glob
+import os
 import pandas as pd
 from pathlib import Path
 
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--camera_dir", required=True, help="Path to .../processed_camera/")
+    return p.parse_args()
+
 def main():
-    # all actual image files from the folder
-    images_dir = "../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera/images"
+    args = parse_args()
+
+    images_dir = os.path.join(args.camera_dir, "images")
     all_images = set([f.name for f in Path(images_dir).glob("*.png")])
-    
-    # the frames where YOLO successfully found a vehicle
-    csv_path = "../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera/detections_0.3_excl40.csv"
+
+    detections_files = glob.glob(os.path.join(args.camera_dir, "detections_*.csv"))
+    if not detections_files:
+        print(f"ERROR: no detections_*.csv found in {args.camera_dir}. Run yolo_detection.py first.")
+        return
+    csv_path = max(detections_files, key=os.path.getmtime)
+    print(f"Using detections file: {os.path.basename(csv_path)}")
+
     df = pd.read_csv(csv_path)
     yolo_frames = set(df['frame'].unique())
     

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import glob
 import os
 import cv2
 import torch
@@ -25,11 +26,16 @@ def main():
     # directory location
     base_dir = args.camera_dir
     images_dir = os.path.join(base_dir, "images")
-    detections_path = os.path.join(base_dir, "detections_0.3_excl40.csv")
     
-    if not os.path.exists(detections_path):
-        print(f"ERROR: Could not find {detections_path}. Did you run yolo_detection.py first?")
+    detections_files = glob.glob(os.path.join(base_dir, "detections_*.csv"))
+    if not detections_files:
+        print(f"ERROR: no detections_*.csv found in {base_dir}. Did you run yolo_detection.py first?")
         return
+    detections_path = max(detections_files, key=os.path.getmtime)
+    print(f"Using detections file: {os.path.basename(detections_path)}")
+
+    # derive suffix (e.g. "0.3_excl40") so the output stays matched to this input
+    suffix = os.path.basename(detections_path)[len("detections_"):-len(".csv")]
         
     # load the boxes from yolo
     df = pd.read_csv(detections_path)
@@ -82,7 +88,7 @@ def main():
     # save data back to the same folder
     if results:
         out_df = pd.DataFrame(results)
-        out_csv_path = os.path.join(base_dir, "camera_headway_estimates_0.3_excl40.csv")
+        out_csv_path = os.path.join(base_dir, f"camera_headway_estimates_{suffix}.csv")
         out_df.to_csv(out_csv_path, index=False)
         
         print(f"\nSuccess! Extracted actual distances for {len(out_df)} frames.")

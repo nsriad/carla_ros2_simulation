@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-import sys
+import sys, glob
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -21,15 +21,20 @@ plt.rcParams.update({
 })
 
 def main():
-    # dataset path
-    # if len(sys.argv) < 2:
-    #     print(f"Usage: python3 {sys.argv} <dataset_name>")
-    #     sys.exit(1)
-    # run_dir = '../data/' + sys.argv[1]
-    run_dir = '../data/town04_leader_50_multimodal_dataset_20260618_102918'
+    if len(sys.argv) < 2:
+        print("Usage: python3 headway_analysis.py <DATETIME>")
+        sys.exit(1)
+
+    DATETIME = sys.argv[1]
+
+    matches = glob.glob(f'../data/*{DATETIME}')
+    if not matches:
+        print(f"No dataset folder found matching *{DATETIME}")
+        sys.exit(1)
+    run_dir = matches[0]
 
     # input raw csv and output directory inside the run's folder
-    csv_path = '../data/headway_csv/headway_log_20260618_102918.csv'
+    csv_path = f'../data/headway_csv/headway_log_{DATETIME}.csv'
     output_dir = os.path.join(run_dir, 'processed_headway')
 
     # create the output directory if it doesn't exist
@@ -41,27 +46,9 @@ def main():
     # normalize time so the graphs start exactly at t=0
     df['time'] = df['timestamp'] - df['timestamp'].iloc[0]
 
-    # # load cam data and timestamps
-    # camera_csv_path = os.path.join(run_dir, 'processed_camera', 'camera_headway_estimates.csv')
-    # cam_time_path = os.path.join(run_dir, 'processed_camera', 'camera_timestamps.csv')
-
-    # if os.path.exists(camera_csv_path) and os.path.exists(cam_time_path):
-    #     print("Loading camera estimates and timestamps...")
-    #     df_cam = pd.read_csv(camera_csv_path)
-    #     df_cam_time = pd.read_csv(cam_time_path)
-        
-    #     # merge the camera estimates with their actual timestamps based on the frame name
-    #     df_cam = pd.merge(df_cam, df_cam_time, left_on='frame', right_on='frame_id', how='inner')        
-    #     # Normalize the camera time using the EXACT SAME start time as the LiDAR/GT data
-    #     t0 = df['timestamp'].iloc[0]
-    #     df_cam['time'] = df_cam['timestamp'] - t0
-    # else:
-    #     df_cam = None
-    #     print(f"Warning: Missing camera files in {os.path.join(run_dir, 'processed_camera')}")
-
-    # load calibrated camera data (already merged with timestamps + ground truth)
-
-    calibrated_path = os.path.join(run_dir, 'processed_camera', 'camera_calibrated.csv')
+    calib_files = glob.glob(os.path.join(run_dir, 'processed_camera', 'camera_calibrated_*.csv'))
+    calibrated_path = max(calib_files, key=os.path.getmtime) if calib_files else None
+    
     if os.path.exists(calibrated_path):
         print("Loading calibrated camera estimates...")
         df_cam = pd.read_csv(calibrated_path)
@@ -92,23 +79,28 @@ def main():
     print(f"MAE: {mae:.4f} m")
     print(f"RMSE: {rmse:.4f} m")
 
+    # save merged sensor data
+    if df_cam is not None:
+
+        df_cam_for_merge = df_cam.drop(columns=['gt_headway_m'], errors='ignore')
+        merged_cam_lid_gt = pd.merge_asof(
+            df_cam_for_merge.sort_values('time'),
+            valid[['time', 'lidar_headway_m', 'gt_headway_m']].sort_values('time'),
+            on='time', direction='nearest', tolerance=0.1
+        )
+        merged_cam_lid_gt = merged_cam_lid_gt.dropna(subset=['lidar_headway_m'])
+        merged_out = merged_cam_lid_gt[['time', 'camera_corrected', 'lidar_headway_m', 'gt_headway_m']]
+
+        merged_csv_path = os.path.join(run_dir, 'merged_cam_lid_gt.csv')
+        merged_out.to_csv(merged_csv_path, index=False)
+        print(f"Saved merged sensor data for fusion: {merged_csv_path} "
+              f"({len(merged_out)} time-aligned frames)")
+    else:
+        print("Skipping fusion export: df_cam is None (camera_calibrated CSV not found)")
 
     # headway time series
 
     fig1, ax1 = plt.subplots(figsize=(10, 4))
-
-    # shade every interval where LiDAR detection was lost
-    # in_gap    = False
-    # gap_start = None
-    # for _, row in df.iterrows():
-    #     if row['lidar_headway_m'] < 0 and not in_gap:
-    #         gap_start = row['time']
-    #         in_gap    = True
-    #     elif row['lidar_headway_m'] >= 0 and in_gap:
-    #         ax1.axvspan(gap_start, row['time'], color='#ffcccc', alpha=0.45, lw=0)
-    #         in_gap = False
-    # if in_gap:
-    #     ax1.axvspan(gap_start, df['time'].iloc[-1], color='#ffcccc', alpha=0.45, lw=0)
 
     ax1.plot(df['time'], df['gt_headway_m'].where(df['gt_headway_m'] >= 0), color='blue', linewidth=1.0, label=r'Ground Truth $d_{\mathrm{gt}}$')
     ax1.plot(valid['time'], valid['lidar_headway_m'], color='red', linestyle='--',linewidth=1.0, alpha=1, label=r'LiDAR Estimate $\hat{d}$')
@@ -132,7 +124,7 @@ def main():
     ax1.set_ylim(bottom=0)
     ax1.grid(True, linestyle='--', alpha=0.6)
 
-    plot1_path = os.path.join(output_dir, 'corrected_headway_time_series_cam.pdf')
+    plot1_path = os.path.join(output_dir, 'headway_time_series_cam.pdf')
     fig1.savefig(plot1_path, format='pdf', bbox_inches='tight')
     print(f"Saved: {plot1_path}")
     plt.close(fig1)
@@ -155,7 +147,7 @@ def main():
     ax2.legend(loc='upper right', framealpha=0.9)
     ax2.grid(True, linestyle='--', alpha=0.6)
 
-    plot2_path = os.path.join(output_dir, 'corrected_headway_error_trace_cam.pdf')
+    plot2_path = os.path.join(output_dir, 'headway_error_trace_cam.pdf')
     fig2.savefig(plot2_path, format='pdf', bbox_inches='tight')
     print(f"Saved: {plot2_path}")
     plt.close(fig2)
@@ -179,7 +171,7 @@ def main():
     ax3.legend(loc='upper left', framealpha=0.9)
     ax3.grid(True, linestyle='--', alpha=0.6)
 
-    plot3_path = os.path.join(output_dir, 'corrected_headway_scatter_cam.pdf')
+    plot3_path = os.path.join(output_dir, headway_scatter_cam.pdf')
     fig3.savefig(plot3_path, format='pdf', bbox_inches='tight')
     print(f"Saved: {plot3_path}")
     plt.close(fig3)

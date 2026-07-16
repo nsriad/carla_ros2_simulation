@@ -1,8 +1,24 @@
 #!/usr/bin/env python3
+import argparse
+import glob
+import os
 import pandas as pd
 
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--camera_dir", required=True, help="Path to .../processed_camera/")
+    return p.parse_args()
+
 def main():
-    csv_path = "../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera/detections_0.3_excl40.csv"
+    args = parse_args()
+
+    detections_files = glob.glob(os.path.join(args.camera_dir, "detections_*.csv"))
+    if not detections_files:
+        print(f"ERROR: no detections_*.csv found in {args.camera_dir}. Run yolo_detection.py first.")
+        return
+    csv_path = max(detections_files, key=os.path.getmtime)
+    print(f"Using detections file: {os.path.basename(csv_path)}")
+
     df = pd.read_csv(csv_path)
     
     # Count how many times each frame appears in the CSV

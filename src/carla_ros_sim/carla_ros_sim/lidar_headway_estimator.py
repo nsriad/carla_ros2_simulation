@@ -37,7 +37,9 @@ class LidarHeadwayEstimator(Node):
         # setup csv file in the data folder
         # added gt_age_s column to track how stale the ground truth is
         # relative to each lidar scan (ideally < 0.1s at 10Hz sync)
-        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.declare_parameter('session_id', '')
+        session_id = self.get_parameter('session_id').value
+        timestamp_str = session_id if session_id else datetime.now().strftime('%Y%m%d_%H%M%S')
         self.csv_path = f'data/headway_csv/headway_log_{timestamp_str}.csv'
         os.makedirs(os.path.dirname(self.csv_path), exist_ok=True)
 
@@ -51,7 +53,7 @@ class LidarHeadwayEstimator(Node):
         # incoming ground truth — store value and wall-clock time of arrival
         # so we can detect stale GT when writing the csv
         self.latest_gt = msg.data
-        self.latest_gt_time = time.time()
+        self.latest_gt_time = self.get_clock().now().nanoseconds / 1e9  # was: time.time()
 
     def lidar_callback(self, msg):
         # use read_points_numpy for a plain (N, 3) float array 
@@ -85,6 +87,18 @@ class LidarHeadwayEstimator(Node):
         min_y, max_y = -1.5, 1.5    # widened lateral window
         min_z, max_z = -2.0, 1.0    # vertical range covering full vehicle height
 
+        # DIAGNOSTIC: log near-range point stats to determine the true
+        # self-occlusion boundary for this sensor's mount point, before
+        # committing to a final min_x value. Remove once min_x is confirmed.
+        near_mask = points_x < 3.5
+        if near_mask.sum() > 0:
+            self.get_logger().info(
+                f'[ROI DIAG] points with x<3.5: {near_mask.sum()} | '
+                f'x range: {points_x[near_mask].min():.2f} to {points_x[near_mask].max():.2f} | '
+                f'z range: {points_z[near_mask].min():.2f} to {points_z[near_mask].max():.2f}',
+                throttle_duration_sec=2.0
+            )
+
         # apply bounding box filter using plain array column indices
         mask = (
             (points_x > min_x) & (points_x < max_x) &
@@ -114,7 +128,7 @@ class LidarHeadwayEstimator(Node):
 
         # calculate how old the latest ground truth is relative to this lidar scan
         # values consistently above 0.05s indicate the two topics are drifting apart
-        current_time = time.time()
+        current_time = self.get_clock().now().nanoseconds / 1e9  # was: time.time()
         gt_age = current_time - self.latest_gt_time if self.latest_gt_time > 0 else -1.0
 
         # write synced data to csv

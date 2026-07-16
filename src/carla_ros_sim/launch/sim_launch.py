@@ -6,9 +6,8 @@ from launch.conditions import IfCondition
 import datetime
 
 def generate_launch_description():
-    # toggle recording with: ros2 launch carla_ros_sim sim_launch.py record:=true
     record_arg = DeclareLaunchArgument('record', default_value='false')
-    duration_arg = DeclareLaunchArgument('duration', default_value='60')  # seconds
+    duration_arg = DeclareLaunchArgument('duration', default_value='60')
 
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     bag_name  = f'data/multimodal_dataset_{timestamp}'
@@ -21,7 +20,8 @@ def generate_launch_description():
              '/carla/tesla_ego/gnss_sensor',
              '/carla/tesla_ego/front_camera/image',
              '/carla/tesla_ego/ground_truth_headway',
-             '-o', bag_name],
+             '-o', bag_name,
+             '--use-sim-time'],
         output='screen'
     )
 
@@ -42,6 +42,10 @@ def generate_launch_description():
             package='carla_ros_sim',
             executable='lidar_headway_estimator',
             name='lidar_headway_estimator',
+            parameters=[{
+                'use_sim_time': True,
+                'session_id': timestamp
+            }],
             output='screen'
         )
     ])

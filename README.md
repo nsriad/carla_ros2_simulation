@@ -109,7 +109,8 @@ ros2 launch carla_ros_bridge carla_ros_bridge.launch.py \
   town:=Town04 \
   timeout:=30 \
   fixed_delta_seconds:=0.1 \
-  synchronous_mode:=True
+  synchronous_mode:=True \
+  use_sim_time:=True
 ```
 
 **Custom straight highway map:**
@@ -186,45 +187,54 @@ Navigate to `data_analysis/` and run the pipeline shell scripts.
 |---|---|
 | `parse_data.sh` | Extracts camera frames, LiDAR point clouds and IMU/GNSS data from the ROS bag into structured output directories |
 | `post_process.sh` | Generates camera GIF, LiDAR timelapse animation, and headway plots from the parsed data |
+| `camera_process.sh` | Runs the full camera pipeline: YOLO detection → missing/multi-vehicle frame checks → ZoeDepth estimation → calibration |
+| `run_all.sh` | Master script, runs all three of the above in order for one dataset |
 
-**Usage:**
+### Quick Start: Full Pipeline
 
 ```bash
 cd data_analysis/
 
+./run_all.sh 20260617_103550
+```
+
+This runs `parse_data.sh`, `post_process.sh`, `camera_process.sh`, then `headway_analysis.py`, in order, for one dataset. The datetime argument matches the folder name suffix: `multimodal_dataset_20260617_103550`.
+
+### Running Steps Individually
+
+Each stage can also be run on its own, useful when debugging one step without
+re-running everything:
+
+```bash
 # step 1: extract all sensor data from bag
 ./parse_data.sh 20260617_103550
 
 # step 2: generate visualizations
 ./post_process.sh 20260617_103550
+
+# step 3: camera detection, depth estimation, and calibration
+./camera_process.sh 20260617_103550
+
+# step 4: final LiDAR vs camera vs ground truth comparison plots
+python3 headway_analysis.py 20260617_103550
 ```
 
-The datetime argument matches the folder name suffix: `multimodal_dataset_20260617_103550`.
+### Skipping Steps
 
-### Parser Scripts
+Both `run_all.sh` and `camera_process.sh` accept skip flags, so you can re-run
+just the step you're actively debugging instead of the whole pipeline:
 
-| Script | Description |
-|---|---|
-| `camera_parser.py` | Extracts camera frames as `.png` files |
-| `lidar_parser.py` | Extracts point clouds as `.pcd` files from the filtered ROI topic |
-| `imu_gnss_parser.py` | Extracts IMU and GNSS data as `.csv` and generates acceleration plot |
-| `headway_analysis.py` | Reads the headway CSV log and generates LiDAR vs ground truth comparison plots |
-| `generate_cam_gif.py` | Stitches camera frames into an animated GIF |
-| `lidar_animator.py` | Renders LiDAR point cloud frames into an animated GIF with ego marker and forward axis |
-| `lidar_visualizer.py` | Static single-frame LiDAR point cloud visualization |
-| `find_multi_car_frame.py` | Flags frames where YOLO detected more than one vehicle, for reviewing duplicate/false-positive detections |
-| `missing_leader_frame.py` | Flags frames with no valid leader-vehicle detection (below confidence threshold or occluded) |
+```bash
+# only re-run calibration, skip everything before it
+./camera_process.sh 20260617_103550 --skip-yolo --skip-missing --skip-multi --skip-depth
 
-### Output Structure
-
-```text
-data/
-└── multimodal_dataset_YYYYMMDD_HHMMSS/
-    ├── processed_camera/
-    ├── processed_lidar/
-    ├── processed_imu_gnss/
-    └── processed_headway/
+# only re-run the camera pipeline, skip parsing and post-processing
+./run_all.sh 20260617_103550 --skip-parse --skip-post --camera-args="--skip-yolo"
 ```
+
+Output from `camera_process.sh` (including console output from the diagnostic
+scripts, which would otherwise scroll past and be lost) is also saved to
+`../data/reports/report_<DATETIME>.txt` for later reference.
 ---
 
 ## YOLOv8 Vehicle Detection on CARLA Frames
@@ -236,8 +246,7 @@ Pipeline order: `yolo_detection.py` → `camera_headway_estimation.py` → `came
 bash setup.sh
 
 # run detections on your CARLA frames
-# adjust the path according to the actual frames directory
-python3 yolo_detection.py \
+python3 camera/yolo_detection.py \
   --frames_dir ../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera/images \
   --conf_thresh 0.3 \
   --exclude_bottom_px 40
@@ -266,8 +275,8 @@ Switch with `--model yolov8s.pt`.
 
 | Script | Description |
 |---|---|
-| `find_multi_car_frame.py` | Flags frames where YOLO detected more than one vehicle, for reviewing duplicate/false-positive detections |
-| `missing_leader_frame.py` | Flags frames with no valid leader-vehicle detection (below confidence threshold or occluded) |
+| `camera/find_multi_car_frame.py` | Flags frames where YOLO detected more than one vehicle, for reviewing duplicate/false-positive detections |
+| `camera/missing_leader_frame.py` | Flags frames with no valid leader-vehicle detection (below confidence threshold or occluded) |
 
 ### Output schema (detections.csv)
 
@@ -296,19 +305,54 @@ zoe = torch.hub.load("isl-org/ZoeDepth", "ZoeD_K", pretrained=True, trust_repo=T
 Run the following script:
 
 ```bash
-python3 camera_headway_estimation.py \
+python3 camera/camera_headway_estimation.py \
   --camera_dir ../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera
 ```
 
 This uses `detections.csv` and produces a raw (uncalibrated) metric depth estimate per frame. To calibrate further and get a reliable depth estimate, run:
 
 ```bash
-python3 camera_calibrate.py \
+python3 camera/camera_calibrate.py \
   --gt_csv ../data/headway_csv/headway_log_20260618_102918.csv \
   --cam_dir ../data/town04_leader_50_multimodal_dataset_20260618_102918/processed_camera \
   --gt_time_col timestamp \
   --gt_dist_col gt_headway_m
 ```
+
+---
+
+## Sensor Fusion
+
+Located in `fusion/`. Combines calibrated camera and LiDAR headway estimates into
+a single fused estimate, using a shared time-block train/test split (first half
+of the drive trains, second half evaluates) rather than a random shuffle, since
+consecutive frames are temporally correlated.
+
+| Script | Method |
+|---|---|
+| `fusion/least_squares_fusion.py` | Linear fusion, `d_fused = θ0 + θ1·lidar + θ2·camera`, fit by ordinary least squares |
+| `fusion/train_mlp_fusion.py` | Small MLP fusion (inputs: lidar, camera, `\|lidar - camera\|`), selectable MSE or Huber loss via `--loss` |
+| `fusion/plot_fusion_comparison.py` | Combined comparison plots across all methods, reads from the shared results file |
+
+**Usage:**
+
+```bash
+python3 fusion/least_squares_fusion.py \
+  --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv
+
+python3 fusion/train_mlp_fusion.py \
+  --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv \
+  --loss mse
+
+python3 fusion/plot_fusion_comparison.py \
+  --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \
+  --zoom_start 120 --zoom_end 128
+```
+
+Every fusion script writes into a shared `processed_fusion/fusion_comparison.csv`,
+appending its own prediction column (`least_squares_fused`, `mlp_mse_fused`,
+`mlp_huber_fused`) rather than each script producing a separate output file, so
+one plotting script can compare all methods at once.
 
 ---
 
