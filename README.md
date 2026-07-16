@@ -234,7 +234,8 @@ just the step you're actively debugging instead of the whole pipeline:
 
 Output from `camera_process.sh` (including console output from the diagnostic
 scripts, which would otherwise scroll past and be lost) is also saved to
-`../data/reports/report_<DATETIME>.txt` for later reference.
+`../data/reports/report_20260617_103550.txt` for later reference.
+
 ---
 
 ## YOLOv8 Vehicle Detection on CARLA Frames
