@@ -44,6 +44,8 @@ def parse_args():
     p.add_argument("--skip-least-squares", action="store_true")
     p.add_argument("--skip-mlp-mse", action="store_true")
     p.add_argument("--skip-mlp-huber", action="store_true")
+    p.add_argument("--skip-mlp-nodiff", action="store_true")
+    p.add_argument("--skip-cp", action="store_true")
     p.add_argument("--zoom_start", type=float, default=None, help="optional zoom window start (seconds)")
     p.add_argument("--zoom_end", type=float, default=None, help="optional zoom window end (seconds)")
     p.add_argument("--output_dir", default=None)
@@ -61,10 +63,12 @@ def main():
     # each entry: (flag, column name, plot label, color, linestyle)
     method_configs = [
         (args.skip_lidar, "lidar_headway_m",   "LiDAR", "red",     "--"),
-        (args.skip_camera, "camera_corrected",  "Camera", "#2ca02c", ":"),
-        (args.skip_least_squares, "least_squares_fused", "Least-squares fusion", "orange",  "-"),
-        (args.skip_mlp_mse, "mlp_mse_fused", "MLP",     "purple",  "-"),
-        # (args.skip_mlp_huber, "mlp_huber_fused", "MLP (Huber loss)",   "brown",   "-"),
+        (args.skip_camera, "camera_corrected",  "Camera", "#2ca02c", "--"),
+        (args.skip_least_squares, "least_squares_fused", "Least-squares fusion", "orange",  "--"),
+        (args.skip_mlp_mse, "mlp_mse_fused", "MLP",     "purple",  "--"),
+        (args.skip_mlp_nodiff, "mlp_mse_nodiff_fused", "MLP", "darkgreen", "--"),
+        (args.skip_cp, "cp_fused", "CP inverse-variance", "#ff00dd", "--"),
+        # (args.skip_mlp_huber, "mlp_huber_fused", "MLP (Huber loss)",   "brown",   "--"),
     ]
  
     # only keep methods that aren't skipped and actually have a column in the csv
@@ -83,10 +87,15 @@ def main():
         return
  
     # figure 1 everything vs ground truth
-    fig, ax = plt.subplots(figsize=(6, 5.5))
-    ax.plot(df["time"], df["gt_headway_m"], color="blue", linewidth=1.5, label="Ground truth", zorder=10)
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.plot(df["time"], df["gt_headway_m"], color="blue", linestyle=":", linewidth=1, label="Ground truth", zorder=10)
     for col, label, color, style in methods:
         ax.plot(df["time"], df[col], color=color, linestyle=style, linewidth=1, alpha=0.8, label=label)
+    
+    # if "cp_fused_lower" in df.columns and "cp_fused_upper" in df.columns and not args.skip_cp:
+    #     ax.fill_between(df["time"], df["cp_fused_lower"], df["cp_fused_upper"],
+    #                      color="#fd72f6", alpha=0.1, label="CP interval (90%)")
+    
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Headway (m)")
     ax.set_title("All methods vs ground truth")
@@ -97,7 +106,7 @@ def main():
     plt.close()
  
     # figure 2
-    fig, ax = plt.subplots(figsize=(6, 5.5))
+    fig, ax = plt.subplots(figsize=(5, 5))
     ax.axhline(0, color="black", linewidth=0.8, linestyle="--")
     for col, label, color, style in methods:
         residual = df[col] - df["gt_headway_m"]
@@ -116,11 +125,11 @@ def main():
  
     # figure 3 zoomed-in window ----
     if args.zoom_start is not None and args.zoom_end is not None:
-        fig, ax = plt.subplots(figsize=(6, 5.5))
+        fig, ax = plt.subplots(figsize=(5, 5))
         zoom = df[(df["time"] >= args.zoom_start) & (df["time"] <= args.zoom_end)]
-        ax.plot(zoom["time"], zoom["gt_headway_m"], color="blue", linewidth=1.5, label="Ground truth", zorder=10)
+        ax.plot(zoom["time"], zoom["gt_headway_m"], color="blue", linestyle=":", linewidth=1, label="Ground truth", zorder=10)
         for col, label, color, style in methods:
-            ax.plot(zoom["time"], zoom[col], color=color, linestyle=style, linewidth=1.2, alpha=0.9, label=label)
+            ax.plot(zoom["time"], zoom[col], color=color, linestyle=style, linewidth=1, alpha=0.9, label=label)
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Headway (m)")
         ax.set_title(f"Zoomed in: t = {args.zoom_start} to {args.zoom_end}s")

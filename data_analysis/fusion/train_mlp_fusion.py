@@ -1,27 +1,5 @@
 #!/usr/bin/env python3
 """
-small mlp fusion of camera + lidar headway estimates, with selectable loss.
-
-inputs to the network per frame:
-  - lidar_headway_m
-  - camera_corrected
-  - diff = |lidar - camera|
-
-why the diff feature: a plain 2-input linear model (least_squares_fusion.py)
-has no way to tell when a reading looks off, it just applies the same fixed
-weights every time. giving the network the gap between the two sensors lets
-it notice when they strongly disagree, which is exactly what happens during
-a lidar spike (e.g. t=123.5-124.2s in this dataset, lidar jumps to ~29m
-while camera and gt stay near 13m).
-
-why huber loss is offered as an option: mse squares every error, so a
-handful of outlier frames can dominate training and pull the fit away from
-the sensor that's actually more accurate most of the time. that's what
-happened with plain least squares in least_squares_fusion.py. huber loss acts
-like mse for small errors but grows linearly past --huber_delta, so a
-single bad frame can't swing the fit as hard. run both --loss mse and
---loss huber and compare.
-
 usage:
     python3 fusion/train_mlp_fusion.py \
         --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv \
@@ -46,10 +24,12 @@ def parse_args():
     p.add_argument("--train_frac", type=float, default=0.5,
                    help="must match least_squares_fusion.py's --train_frac for a fair comparison")
     p.add_argument("--loss", choices=["mse", "huber"], default="huber")
+    p.add_argument("--no_diff", action="store_true",
+                   help="exclude the |lidar - camera| feature, to test whether it actually helps")
     p.add_argument("--huber_delta", type=float, default=1.0,
                    help="huber's switch point in meters: quadratic below this, linear above it")
     p.add_argument("--hidden_dims", default="16,8", help="comma-separated hidden layer sizes")
-    p.add_argument("--epochs", type=int, default=2000)
+    p.add_argument("--epochs", type=int, default=50000)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--output_dir", default=None)
@@ -85,7 +65,10 @@ def main():
     df = pd.read_csv(args.merged_csv).sort_values("time").reset_index(drop=True)
 
     # just one extra feature: how much the two sensors disagree
-    df["diff"] = (df["lidar_headway_m"] - df["camera_corrected"]).abs()
+    if args.no_diff:
+        print("running without the diff feature, for comparison against the version that has it\n")
+    else:
+        df["diff"] = (df["lidar_headway_m"] - df["camera_corrected"]).abs()
 
     # same time-block split as least_squares_fusion.py: train on the first half, test on the second
     n_train = int(args.train_frac * len(df))
@@ -94,7 +77,7 @@ def main():
     print(f"train = first {len(train)} frames, test = last {len(test)} frames")
     print("(this split should match least_squares_fusion.py's split for a fair comparison)\n")
 
-    feature_cols = ["lidar_headway_m", "camera_corrected", "diff"]
+    feature_cols = ["lidar_headway_m", "camera_corrected"] if args.no_diff else ["lidar_headway_m", "camera_corrected", "diff"]
 
     # standardize using train stats only, so test never leaks into the scaling
     feat_mean = train[feature_cols].mean()
@@ -131,8 +114,8 @@ def main():
         loss = criterion(pred, y_train)
         loss.backward()
         optimizer.step()
-        if (epoch + 1) % 50 == 0 or epoch == 0:
-            print(f"  epoch {epoch + 1}/{args.epochs}  train loss = {loss.item():.4f}")
+        if (epoch + 1) % 250 == 0 or epoch == 0:
+            print(f"  epoch {epoch + 1}/{args.epochs}  train loss = {loss.item():.6f}")
 
     # evaluate on the test frames only, never seen during training
     model.eval()
@@ -153,7 +136,7 @@ def main():
     cam_mae = np.mean(np.abs(cam_error))
     cam_rmse = np.sqrt(np.mean(cam_error ** 2))
 
-    col_name = f"mlp_{args.loss}_fused"
+    col_name = f"mlp_{args.loss}_nodiff_fused" if args.no_diff else f"mlp_{args.loss}_fused"
     results = pd.DataFrame([
         {"sensor": "LiDAR alone", "MAE": lidar_mae, "RMSE": lidar_rmse},
         {"sensor": "Camera alone (calibrated)", "MAE": cam_mae, "RMSE": cam_rmse},
@@ -168,16 +151,20 @@ def main():
     shared_path = os.path.join(output_dir, "fusion_comparison.csv")
     if os.path.exists(shared_path):
         shared = pd.read_csv(shared_path)
-        new_col = pd.DataFrame({"time": test["time"].values, col_name: pred_test})
-        shared = shared.merge(new_col, on="time", how="outer")
     else:
         shared = test[["time", "lidar_headway_m", "camera_corrected", "gt_headway_m"]].copy()
-        shared[col_name] = pred_test
+
+    # align by time and assign directly, this either creates the column or
+    # overwrites it cleanly, no merge, no suffixes, no _x/_y duplicates possible
+    pred_series = pd.Series(pred_test, index=test["time"].values)
+    shared = shared.set_index("time")
+    shared[col_name] = pred_series
+    shared = shared.reset_index()
 
     shared.to_csv(shared_path, index=False)
     print(f"\nadded '{col_name}' column to {shared_path}")
 
-    with open(os.path.join(output_dir, f"mlp_{args.loss}_report.txt"), "w") as f:
+    with open(os.path.join(output_dir, f"{col_name}_report.txt"), "w") as f:
         f.write(f"loss: {args.loss} (delta={args.huber_delta})\n")
         f.write(f"hidden dims: {hidden_dims}\n")
         f.write(f"features: {feature_cols}\n\n")
