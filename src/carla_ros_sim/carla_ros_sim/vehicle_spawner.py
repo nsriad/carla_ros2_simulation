@@ -128,9 +128,11 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info('Shutting down node...')
     finally:
-        node.destroy_actors()
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     main()

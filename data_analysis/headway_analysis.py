@@ -82,14 +82,24 @@ def main():
     # save merged sensor data
     if df_cam is not None:
 
-        df_cam_for_merge = df_cam.drop(columns=['gt_headway_m'], errors='ignore')
+        # driven by every raw frame (df), not just camera's successful ones (df_cam)
+        df_cam_for_merge = df_cam[['time', 'camera_corrected']].sort_values('time')
         merged_cam_lid_gt = pd.merge_asof(
-            df_cam_for_merge.sort_values('time'),
-            valid[['time', 'lidar_headway_m', 'gt_headway_m']].sort_values('time'),
+            df.sort_values('time'),
+            df_cam_for_merge,
             on='time', direction='nearest', tolerance=0.1
         )
-        merged_cam_lid_gt = merged_cam_lid_gt.dropna(subset=['lidar_headway_m'])
-        merged_out = merged_cam_lid_gt[['time', 'camera_corrected', 'lidar_headway_m', 'gt_headway_m']]
+
+        # missing readings become an explicit flag
+        merged_cam_lid_gt['camera_valid'] = merged_cam_lid_gt['camera_corrected'].notna().astype(int)
+        merged_cam_lid_gt['lidar_valid'] = (merged_cam_lid_gt['lidar_headway_m'] >= 0).astype(int)
+        merged_cam_lid_gt['camera_corrected'] = merged_cam_lid_gt['camera_corrected'].fillna(-1.0)
+
+        # ground truth for each row
+        merged_cam_lid_gt = merged_cam_lid_gt[merged_cam_lid_gt['gt_headway_m'] >= 0]
+
+        merged_out = merged_cam_lid_gt[['time', 'camera_corrected', 'camera_valid',
+                                         'lidar_headway_m', 'lidar_valid', 'gt_headway_m']]
 
         merged_csv_path = os.path.join(run_dir, 'merged_cam_lid_gt.csv')
         merged_out.to_csv(merged_csv_path, index=False)
@@ -171,7 +181,7 @@ def main():
     ax3.legend(loc='upper left', framealpha=0.9)
     ax3.grid(True, linestyle='--', alpha=0.6)
 
-    plot3_path = os.path.join(output_dir, headway_scatter_cam.pdf')
+    plot3_path = os.path.join(output_dir, 'headway_scatter_cam.pdf')
     fig3.savefig(plot3_path, format='pdf', bbox_inches='tight')
     print(f"Saved: {plot3_path}")
     plt.close(fig3)

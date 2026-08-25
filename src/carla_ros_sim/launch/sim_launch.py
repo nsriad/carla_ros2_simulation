@@ -1,8 +1,10 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, EmitEvent
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 import datetime
 
 def generate_launch_description():
@@ -20,8 +22,19 @@ def generate_launch_description():
              '/carla/tesla_ego/gnss_sensor',
              '/carla/tesla_ego/front_camera/image',
              '/carla/tesla_ego/ground_truth_headway',
+             '/carla/tesla_ego/camera_headway',
              '-o', bag_name,
              '--use-sim-time'],
+        output='screen'
+    )
+
+    vehicle_spawner_node = Node(
+        package='carla_ros_sim',
+        executable='vehicle_spawner',
+        name='vehicle_spawner',
+        parameters=[{
+            'duration': LaunchConfiguration('duration')
+        }],
         output='screen'
     )
 
@@ -29,6 +42,13 @@ def generate_launch_description():
         record_arg,
         bag_recorder,
         duration_arg,
+        vehicle_spawner_node,
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=vehicle_spawner_node,
+                on_exit=[EmitEvent(event=Shutdown(reason='vehicle_spawner finished'))]
+            )
+        ),
         Node(
             package='carla_ros_sim',
             executable='vehicle_spawner',
@@ -42,6 +62,26 @@ def generate_launch_description():
             package='carla_ros_sim',
             executable='lidar_headway_estimator',
             name='lidar_headway_estimator',
+            parameters=[{
+                'use_sim_time': True,
+                'session_id': timestamp
+            }],
+            output='screen'
+        ),
+        Node(
+            package='carla_ros_sim',
+            executable='camera_headway_estimator',
+            name='camera_headway_estimator',
+            parameters=[{
+                'use_sim_time': True,
+                'session_id': timestamp
+            }],
+            output='screen'
+        ),
+        Node(
+            package='carla_ros_sim',
+            executable='ml_headway_estimator',
+            name='ml_headway_estimator',
             parameters=[{
                 'use_sim_time': True,
                 'session_id': timestamp

@@ -21,6 +21,7 @@ class CarlaEnvironment:
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(30.0)
         self.world = self.client.get_world()
+        self.world.set_weather(carla.WeatherParameters.ClearNoon)
         return self.world
 
     def generate_shared_route(self, start_transform, total_distance=2000.0):
@@ -112,7 +113,9 @@ class CarlaEnvironment:
             
             self.tm.auto_lane_change(self.leader_vehicle, False)
             self.tm.auto_lane_change(self.ego_vehicle, False)
-            self.tm.distance_to_leading_vehicle(self.ego_vehicle, 5.0)
+            self.tm.distance_to_leading_vehicle(self.ego_vehicle, 3.0)
+
+            # control speed for ego and leader vehicle
             self.tm.vehicle_percentage_speed_difference(self.leader_vehicle, 50.0) 
             self.tm.vehicle_percentage_speed_difference(self.ego_vehicle, 0.0)
             

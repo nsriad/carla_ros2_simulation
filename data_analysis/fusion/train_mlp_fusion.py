@@ -8,6 +8,10 @@ usage:
     python3 fusion/train_mlp_fusion.py \
         --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv \
         --loss mse
+
+    python3 fusion/train_mlp_fusion.py \
+        --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv \
+        --loss mse --feature_mode lag --window_size 5
 """
 
 import argparse
@@ -16,6 +20,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import torch.onnx
 
 
 def parse_args():
@@ -24,8 +29,13 @@ def parse_args():
     p.add_argument("--train_frac", type=float, default=0.5,
                    help="must match least_squares_fusion.py's --train_frac for a fair comparison")
     p.add_argument("--loss", choices=["mse", "huber"], default="huber")
+    p.add_argument("--feature_mode", choices=["diff", "lag"], default="diff",
+                   help="diff: [lidar, camera, |lidar-camera|]. lag: sliding window of the past "
+                        "--window_size steps for both sensors, per advisor's suggestion")
+    p.add_argument("--window_size", type=int, default=5,
+                   help="past steps included as features (t-1 .. t-window_size), lag mode only")
     p.add_argument("--no_diff", action="store_true",
-                   help="exclude the |lidar - camera| feature, to test whether it actually helps")
+                   help="exclude the |lidar - camera| feature, to test whether it actually helps (diff mode only)")
     p.add_argument("--huber_delta", type=float, default=1.0,
                    help="huber's switch point in meters: quadratic below this, linear above it")
     p.add_argument("--hidden_dims", default="16,8", help="comma-separated hidden layer sizes")
@@ -53,6 +63,15 @@ class FusionMLP(nn.Module):
         return out.squeeze(-1)
 
 
+def add_lag_features(df, window):
+    # lag k=0 is the current step, so we add lag 1..window as extra features
+    for lag in range(1, window + 1):
+        df[f"lidar_headway_m_lag{lag}"] = df["lidar_headway_m"].shift(lag)
+        df[f"camera_corrected_lag{lag}"] = df["camera_corrected"].shift(lag)
+
+    # drop rows without a full window instead of padding them
+    return df.iloc[window:].reset_index(drop=True)
+
 def main():
     args = parse_args()
     output_dir = args.output_dir or os.path.join(os.path.dirname(args.merged_csv), 'processed_fusion')
@@ -64,20 +83,29 @@ def main():
     # load and sort by time, same as least_squares_fusion.py
     df = pd.read_csv(args.merged_csv).sort_values("time").reset_index(drop=True)
 
-    # just one extra feature: how much the two sensors disagree
-    if args.no_diff:
-        print("running without the diff feature, for comparison against the version that has it\n")
+    if args.feature_mode == "lag":
+        df = add_lag_features(df, args.window_size)
+        feature_cols = ["lidar_headway_m", "camera_corrected"]
+        for lag in range(1, args.window_size + 1):
+            feature_cols += [f"lidar_headway_m_lag{lag}", f"camera_corrected_lag{lag}"]
+        print(f"feature_mode=lag, window_size={args.window_size} -> {len(feature_cols)} features, "
+              f"{args.window_size} leading rows dropped, {len(df)} rows remain\n")
     else:
-        df["diff"] = (df["lidar_headway_m"] - df["camera_corrected"]).abs()
+        # just one extra feature: how much the two sensors disagree
+        if args.no_diff:
+            print("running without the diff feature, for comparison against the version that has it\n")
+            feature_cols = ["lidar_headway_m", "camera_corrected"]
+        else:
+            df["diff"] = (df["lidar_headway_m"] - df["camera_corrected"]).abs()
+            feature_cols = ["lidar_headway_m", "camera_corrected", "diff"]
 
-    # same time-block split as least_squares_fusion.py: train on the first half, test on the second
+
+    # lag mode drops window_size rows first, so frame counts differ slightly
     n_train = int(args.train_frac * len(df))
     train = df.iloc[:n_train].reset_index(drop=True)
     test = df.iloc[n_train:].reset_index(drop=True)
     print(f"train = first {len(train)} frames, test = last {len(test)} frames")
     print("(this split should match least_squares_fusion.py's split for a fair comparison)\n")
-
-    feature_cols = ["lidar_headway_m", "camera_corrected"] if args.no_diff else ["lidar_headway_m", "camera_corrected", "diff"]
 
     # standardize using train stats only, so test never leaks into the scaling
     feat_mean = train[feature_cols].mean()
@@ -90,7 +118,7 @@ def main():
     y_mean = train["gt_headway_m"].mean()
     y_std = train["gt_headway_m"].std()
     y_train = ((train["gt_headway_m"] - y_mean) / y_std).values.astype(np.float32)
-
+ 
     x_train = torch.tensor(x_train)
     y_train = torch.tensor(y_train)
     x_test = torch.tensor(x_test)
@@ -136,14 +164,18 @@ def main():
     cam_mae = np.mean(np.abs(cam_error))
     cam_rmse = np.sqrt(np.mean(cam_error ** 2))
 
-    col_name = f"mlp_{args.loss}_nodiff_fused" if args.no_diff else f"mlp_{args.loss}_fused"
+    if args.feature_mode == "lag":
+        col_name = f"mlp_{args.loss}_lag{args.window_size}_fused"
+    else:
+        col_name = f"mlp_{args.loss}_nodiff_fused" if args.no_diff else f"mlp_{args.loss}_fused"
+
     results = pd.DataFrame([
         {"sensor": "LiDAR alone", "MAE": lidar_mae, "RMSE": lidar_rmse},
         {"sensor": "Camera alone (calibrated)", "MAE": cam_mae, "RMSE": cam_rmse},
         {"sensor": col_name, "MAE": mae, "RMSE": rmse},
     ])
     print("\n" + "=" * 55)
-    print(f"results on test frames (loss = {args.loss})")
+    print(f"results on test frames (loss = {args.loss}, feature_mode = {args.feature_mode})")
     print("=" * 55)
     print(results.to_string(index=False))
 
@@ -154,8 +186,7 @@ def main():
     else:
         shared = test[["time", "lidar_headway_m", "camera_corrected", "gt_headway_m"]].copy()
 
-    # align by time and assign directly, this either creates the column or
-    # overwrites it cleanly, no merge, no suffixes, no _x/_y duplicates possible
+    # align by time, creates or overwrites the column cleanly, no _x/_y merge suffixes
     pred_series = pd.Series(pred_test, index=test["time"].values)
     shared = shared.set_index("time")
     shared[col_name] = pred_series
@@ -165,10 +196,48 @@ def main():
     print(f"\nadded '{col_name}' column to {shared_path}")
 
     with open(os.path.join(output_dir, f"{col_name}_report.txt"), "w") as f:
+        f.write(f"feature_mode: {args.feature_mode}" +
+                (f" (window_size={args.window_size})\n" if args.feature_mode == "lag" else "\n"))
         f.write(f"loss: {args.loss} (delta={args.huber_delta})\n")
         f.write(f"hidden dims: {hidden_dims}\n")
         f.write(f"features: {feature_cols}\n\n")
         f.write(results.to_string(index=False))
+
+
+    # export to ONNX for ros2 inference node
+    
+    # export the nn
+    onnx_filename = f"{col_name}.onnx"
+    onnx_path = os.path.join(output_dir, onnx_filename)
+    
+    # creating dummy input (batch_size=1, num_features)
+    dummy_input = torch.zeros(1, len(feature_cols), dtype=torch.float32)
+    
+    model.eval() # model is in inference mode
+    torch.onnx.export(
+        model, 
+        dummy_input, 
+        onnx_path,
+        export_params=True,
+        opset_version=11,
+        do_constant_folding=True,
+        input_names=['sensor_features'],
+        output_names=['normalized_headway']
+    )
+    
+    # savew normalization constant
+    norm_path = os.path.join(output_dir, f"{col_name}_normalization.npz")
+    np.savez(
+        norm_path,
+        feat_mean=feat_mean.values.astype(np.float32),
+        feat_std=feat_std.values.astype(np.float32),
+        y_mean=np.float32(y_mean),
+        y_std=np.float32(y_std),
+        feature_cols=np.array(feature_cols)
+    )
+    
+    print(f"\nSaved optimized ONNX model to: {onnx_path}")
+    print(f"Saved normalization parameters to: {norm_path}")
 
 
 if __name__ == "__main__":

@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """
-use the --skip-* flags to hide a method you don't want in the plot,
-or leave everything on to see all of them at once.
-
 usage:
-    python3 fusion/plot_fusion_comparison.py \\
+    python3 fusion/plot_fusion_comparison.py \
         --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv
 
-    # hide lidar and camera, just compare the fusion methods against each other
-    python3 fusion/plot_fusion_comparison.py \\
-        --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \\
-        --skip-lidar --skip-camera
+    # hide specific columns by name, e.g. raw sensors or one fusion method
+    python3 fusion/plot_fusion_comparison.py \
+        --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \
+        --skip lidar_headway_m camera_corrected mlp_mse_nodiff_fused
 
     # zoom in on the known spike region as a third panel
-    python3 fusion/plot_fusion_comparison.py \\
-        --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \\
+    python3 fusion/plot_fusion_comparison.py \
+        --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \
+        --zoom_start 120 --zoom_end 128
+
+    # rename a column's legend entry instead of the auto-generated label
+    python3 fusion/plot_fusion_comparison.py \
+        --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \
+        --skip least_squares_fused mlp_mse_nodiff_fused cp_fused cp_fused_lower cp_fused_upper \
+        --label mlp_mse_fused="MLP" mlp_mse_lag5_fused="MLP (w=5)" mlp_mse_lag10_fused="MLP (w=10)" \
         --zoom_start 120 --zoom_end 128
 """
 
 import argparse
+import itertools
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -35,67 +40,70 @@ plt.rcParams.update({
     "ytick.labelsize": 14,
 })
 
+# fixed styling for the raw sensor columns, everything else is auto-styled
+KNOWN_COLUMNS = {
+    "lidar_headway_m": ("LiDAR", "red", "--"),
+    "camera_corrected": ("Camera", "#2ca02c", "--"),
+}
+NON_METHOD_COLUMNS = {"time", "gt_headway_m"}
+AUTO_COLORS = ["purple", "orange", "darkgreen", "#ff00dd", "brown", "teal", "gold", "black"]
+
+
+def label_from_column(col):
+    # e.g. mlp_mse_lag5_fused -> "Mlp Mse Lag5"
+    return col.replace("_fused", "").replace("_", " ").strip().title()
+
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--comparison_csv", required=True, help="fusion_comparison.csv")
-    p.add_argument("--skip-lidar", action="store_true")
-    p.add_argument("--skip-camera", action="store_true")
-    p.add_argument("--skip-least-squares", action="store_true")
-    p.add_argument("--skip-mlp-mse", action="store_true")
-    p.add_argument("--skip-mlp-huber", action="store_true")
-    p.add_argument("--skip-mlp-nodiff", action="store_true")
-    p.add_argument("--skip-cp", action="store_true")
+    p.add_argument("--skip", nargs="+", default=[], help="column names to hide")
+    p.add_argument("--label", nargs="+", default=[],
+                   help="override a column's legend label, format: column=Text (e.g. mlp_mse_lag5_fused=\"Window 5\")")
     p.add_argument("--zoom_start", type=float, default=None, help="optional zoom window start (seconds)")
     p.add_argument("--zoom_end", type=float, default=None, help="optional zoom window end (seconds)")
     p.add_argument("--output_dir", default=None)
     return p.parse_args()
- 
- 
+
+
+def build_methods(df, skip, label_overrides):
+    methods = []
+    colors = itertools.cycle(AUTO_COLORS)
+    for col in df.columns:
+        if col in NON_METHOD_COLUMNS:
+            continue
+        if col in skip:
+            print(f"skipping {col} (--skip)")
+            continue
+        if col in KNOWN_COLUMNS:
+            label, color, style = KNOWN_COLUMNS[col]
+        else:
+            label, color, style = label_from_column(col), next(colors), "--"
+        if col in label_overrides:
+            label = label_overrides[col]
+        methods.append((col, label, color, style))
+    return methods
+
+
 def main():
     args = parse_args()
     output_dir = args.output_dir or os.path.dirname(args.comparison_csv)
     os.makedirs(output_dir, exist_ok=True)
- 
+
     df = pd.read_csv(args.comparison_csv).sort_values("time").reset_index(drop=True)
     print(f"loaded {len(df)} frames, columns: {list(df.columns)}\n")
- 
-    # each entry: (flag, column name, plot label, color, linestyle)
-    method_configs = [
-        (args.skip_lidar, "lidar_headway_m",   "LiDAR", "red",     "--"),
-        (args.skip_camera, "camera_corrected",  "Camera", "#2ca02c", "--"),
-        (args.skip_least_squares, "least_squares_fused", "Least-squares fusion", "orange",  "--"),
-        (args.skip_mlp_mse, "mlp_mse_fused", "MLP",     "purple",  "--"),
-        (args.skip_mlp_nodiff, "mlp_mse_nodiff_fused", "MLP", "darkgreen", "--"),
-        (args.skip_cp, "cp_fused", "CP inverse-variance", "#ff00dd", "--"),
-        # (args.skip_mlp_huber, "mlp_huber_fused", "MLP (Huber loss)",   "brown",   "--"),
-    ]
- 
-    # only keep methods that aren't skipped and actually have a column in the csv
-    methods = []
-    for skip, col, label, color, style in method_configs:
-        if skip:
-            print(f"skipping {label} (--skip flag)")
-            continue
-        if col not in df.columns:
-            print(f"skipping {label} ('{col}' not found in csv -- run that script first)")
-            continue
-        methods.append((col, label, color, style))
- 
+
+    label_overrides = dict(item.split("=", 1) for item in args.label)
+    methods = build_methods(df, args.skip, label_overrides)
     if not methods:
         print("nothing left to plot after skipping/missing columns.")
         return
- 
+
     # figure 1 everything vs ground truth
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot(df["time"], df["gt_headway_m"], color="blue", linestyle=":", linewidth=1, label="Ground truth", zorder=10)
     for col, label, color, style in methods:
         ax.plot(df["time"], df[col], color=color, linestyle=style, linewidth=1, alpha=0.8, label=label)
-    
-    # if "cp_fused_lower" in df.columns and "cp_fused_upper" in df.columns and not args.skip_cp:
-    #     ax.fill_between(df["time"], df["cp_fused_lower"], df["cp_fused_upper"],
-    #                      color="#fd72f6", alpha=0.1, label="CP interval (90%)")
-    
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Headway (m)")
     ax.set_title("All methods vs ground truth")
@@ -104,7 +112,7 @@ def main():
     main_path = os.path.join(output_dir, "fusion_comparison_main.pdf")
     plt.savefig(main_path, format="pdf", bbox_inches="tight")
     plt.close()
- 
+
     # figure 2
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.axhline(0, color="black", linewidth=0.8, linestyle="--")
@@ -119,11 +127,11 @@ def main():
     residual_path = os.path.join(output_dir, "fusion_comparison_residual.pdf")
     plt.savefig(residual_path, format="pdf", bbox_inches="tight")
     plt.close()
- 
+
     print(f"\nsaved: {main_path}")
     print(f"saved: {residual_path}")
- 
-    # figure 3 zoomed-in window ----
+
+    # figure 3 zoomed-in window
     if args.zoom_start is not None and args.zoom_end is not None:
         fig, ax = plt.subplots(figsize=(5, 5))
         zoom = df[(df["time"] >= args.zoom_start) & (df["time"] <= args.zoom_end)]
@@ -139,7 +147,7 @@ def main():
         plt.savefig(zoom_path, format="pdf", bbox_inches="tight")
         plt.close()
         print(f"saved: {zoom_path}")
- 
- 
+
+
 if __name__ == "__main__":
     main()
