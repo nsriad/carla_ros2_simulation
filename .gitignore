@@ -25,3 +25,6 @@ rosbag2_*/
 
 *.pt
 *plan.md
+
+# test files
+test_*.py
