@@ -28,3 +28,6 @@ rosbag2_*/
 
 # test files
 test_*.py
+
+# image files
+*.png
