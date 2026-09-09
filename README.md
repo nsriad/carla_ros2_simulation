@@ -33,7 +33,10 @@ A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for mult
 | CARLA | 0.9.16 |
 | Python | 3.10 |
 | Unreal Engine | CARLA Built-in |
-| NumPy | 1.x |
+| NumPy | 1.x (required — `cv_bridge` breaks under NumPy 2.x) |
+| GPU | RTX 4090 (or similar CUDA-capable GPU) |
+| PyTorch | CUDA build — verify with `python3 -c "import torch; print(torch.cuda.is_available())"` |
+| Ultralytics | Recent enough to include YOLO26 (`pip install -U ultralytics` if `yolo26x-depth.pt` isn't recognized) |
 
 ---
 
@@ -48,6 +51,8 @@ The core ROS 2 package is `carla_ros_sim`. The source is organized into modular 
 | `sensors.py` | Sensor attachment manager. Configures and spawns IMU, GNSS, RGB camera, and 32-channel LiDAR onto the ego vehicle |
 | `controllers.py` | PID longitudinal controller for ego vehicle gap tracking, and stop-and-go wave logic for the leader vehicle on the custom straight road |
 | `lidar_headway_estimator.py` | ROS 2 node that subscribes to the raw LiDAR point cloud, applies a 3D bounding box ROI filter, estimates space headway via radial distance, publishes both the scalar headway and the filtered ROI point cloud, and logs results to a timestamped CSV |
+| `camera_headway_estimator.py` | ROS 2 node that subscribes to the ego front camera, runs YOLOv8 vehicle detection plus a YOLO26-depth model, samples a small median-filtered patch around the leader vehicle's ground-contact point, applies an offline-fit affine calibration, publishes the corrected scalar headway, and logs results to a timestamped CSV. Active model/calibration variant is set via the constants block at the top of the file |
+| `ml_headway_estimator.py` | ROS 2 node that subscribes to the LiDAR and camera headway topics, waits for a fresh valid reading from both, and runs an ONNX-exported MLP fusion model (trained offline via `fusion/train_mlp_fusion.py`) to publish and log the final fused headway estimate. Model variant is set via `MODEL_DIR` at the top of the file |
 
 ---
 
@@ -63,11 +68,27 @@ git clone https://github.com/nsriad/carla_ros2_simulation.git
 ```
 
 ### 2. Install Python Dependencies
-The post-processing and visualization scripts require specific Python libraries. You can install them globally or within your dedicated `carla_env` virtual environment:
+
+**Install system-wide (`pip3 install --user ...`), not only inside a virtual environment.**
+ROS 2 node executables run under the system Python interpreter regardless of which venv
+is active in your terminal. Packages installed only inside a venv are invisible to the
+running nodes and cause `ModuleNotFoundError` at launch.
 
 ```bash
-pip install pandas numpy open3d rosbags matplotlib pillow
+pip3 install --user "numpy<2" onnxruntime torch ultralytics timm opencv-python
 ```
+
+- `numpy<2` is required, `cv_bridge` breaks under NumPy 2.x, and the packages above can
+  silently pull in NumPy 2.x as a dependency if this isn't pinned first
+- If install fails with an `invalid-installed-package` error mentioning `flatbuffers`, retry
+  with `pip3 install --user --ignore-installed flatbuffers <package>`, a known conflict
+  with an old system `python3-flatbuffers` apt package
+- `ultralytics` must be recent enough to include YOLO26:
+  `pip3 install --user -U ultralytics` if a `yolo26*-depth.pt` checkpoint isn't recognized
+
+`data_analysis/`'s offline scripts can additionally use the `carla_env` virtual environment
+from Terminal 3 below, but anything the **live ROS 2 nodes** import must be available
+system-wide regardless of that venv.
 
 ### 3. Build the Package
 From the root of the cloned repository, build the package using `colcon`. Using the `--symlink-install` flag is recommended for Python packages so you do not have to rebuild every time you edit a script.
@@ -144,6 +165,9 @@ cd ~/carla_simulation_ws
 source install/setup.bash
 ros2 launch carla_ros_sim sim_launch.py record:=true duration:=60
 ```
+
+*As of the current launch file, the whole pipeline stops automatically when `vehicle_spawner`
+finishes (at `duration` seconds). No manual Ctrl+C needed for a normal run.*
 
 **Launch arguments:**
 
@@ -238,9 +262,50 @@ scripts, which would otherwise scroll past and be lost) is also saved to
 
 ---
 
+## Data Organization
+
+Two independent naming conventions are used, and they answer two different questions —
+mixing them up is a common source of confusion.
+
+### `<DATETIME>`: which recording session
+
+Every live simulation run gets one timestamp (the `session_id` passed by `sim_launch.py`),
+shared across every file that recording produced:
+
+| File | Produced by |
+|---|---|
+| `data/multimodal_dataset_<DATETIME>/` | The rosbag (if `record:=true`) |
+| `data/headway_csv/headway_log_<DATETIME>.csv` | `lidar_headway_estimator.py` |
+| `data/headway_csv/camera_headway_log_<DATETIME>.csv` | `camera_headway_estimator.py` |
+| `data/ml_inference_log_<DATETIME>.csv` | `ml_headway_estimator.py` |
+
+`headway_analysis.py <DATETIME>` and `fusion/plot_ml_prediction.py <DATETIME>` both take
+this same value to know which run to process.
+
+### `_<variant>` — which offline processing configuration
+
+Within one dataset folder, the same raw data can be reprocessed multiple times with
+different camera/fusion settings (e.g. testing `yolo26n` vs `yolo26x`, with or without
+patch sampling). Each configuration gets its own suffix so results never overwrite
+each other:
+
+| Folder/file pattern | Produced by |
+|---|---|
+| `processed_camera_<variant>/` | `camera_headway_estimation_yolo26.py --output_dir` |
+| `processed_fusion_<variant>/` | `train_mlp_fusion.py --output_dir` |
+| `merged_cam_lid_gt_<variant>.csv` | `headway_analysis.py <DATETIME> processed_camera_<variant>` |
+
+The plain (no-suffix) versions like `processed_camera/`, `processed_fusion/`,
+`merged_cam_lid_gt.csv` are the ZoeDepth/default configuration. `camera_calibrate.py`
+picks the *most recently modified* `camera_calibrated_*.csv` in whichever `--cam_dir`
+it's pointed at — always point it at the specific variant folder you mean, rather than
+relying on modification-time ordering across runs.
+
+---
+
 ## YOLOv8 Vehicle Detection on CARLA Frames
 
-Pipeline order: `yolo_detection.py` → `camera_headway_estimation.py` → `camera_calibrate.py`
+Pipeline order: `yolo_detection.py` -> `camera_headway_estimation.py` -> `camera_calibrate.py`
 
 ```bash
 # install dependencies
@@ -291,7 +356,54 @@ Switch with `--model yolov8s.pt`.
 
 ---
 
-## Depth Estimation with ZoeDepth
+## Depth Estimation
+
+Two depth backends are supported. **YOLO26-depth is the current default** which is dramatically faster (~23×) with comparable or better accuracy once calibrated for this domain. ZoeDepth remains available and is documented below for reference.
+
+### YOLO26-depth (default)
+
+Pipeline order: `yolo_detection.py` → `camera_headway_estimation_yolo26.py` → `camera_calibrate.py`
+
+```bash
+python3 camera/camera_headway_estimation_yolo26.py \
+  --camera_dir ../data/multimodal_dataset_20260713_191320/processed_camera \
+  --model yolo26x-depth.pt --patch_radius 4 \
+  --output_dir ../data/multimodal_dataset_20260713_191320/processed_camera_yolo26x_patch
+```
+
+Reuses the existing `detections_*.csv` from `yolo_detection.py` — only the depth backend changes, detection stays the same.
+
+**Key flags:**
+
+| Flag | Description |
+|---|---|
+| `--model` | YOLO26-depth checkpoint (see table below) |
+| `--patch_radius` | Sample a median over a `(2r+1)×(2r+1)` pixel window instead of one pixel at the vehicle's bottom-center point. Window extends *upward* into the vehicle body only, never below the point into the road. `0` = single pixel |
+| `--imgsz` | Inference resolution, default `768` (matches the released weights' training resolution) |
+| `--output_dir` | Where results are written. Defaults to a sibling `processed_camera_<name>` folder, so testing a variant never overwrites another one's results |
+
+**Model comparison** (measured on this project's CARLA dataset, calibrated, single-pixel sampling unless noted):
+
+| Model | MAE | RMSE | Speed | Notes |
+|---|---|---|---|---|
+| `yolo26n-depth.pt` | 4.37 m | 4.95 m | ~19 ms/frame | Fast, but noticeably less accurate on this outdoor/long-range domain |
+| `yolo26x-depth.pt` | 2.48 m | 2.98 m | ~18.7 ms/frame | Same speed as nano |
+| `yolo26x-depth.pt` + `--patch_radius 4` | 2.42 m | 2.92 m | ~19 ms/frame | Marginal gain over single-pixel; **current deployed configuration** |
+
+For comparison, ZoeDepth (below) reaches 1.65 m MAE at ~440 ms/frame — YOLO26x is the accuracy/speed tradeoff currently in production; see `troubleshooting.md` for the domain-mismatch discussion behind nano's weaker result.
+
+Calibrate with the new output directory:
+```bash
+python3 camera/camera_calibrate.py \
+  --gt_csv ../data/headway_csv/headway_log_20260713_191320.csv \
+  --cam_dir ../data/multimodal_dataset_20260713_191320/processed_camera_yolo26x_patch/ \
+  --gt_time_col timestamp --gt_dist_col gt_headway_m
+```
+
+The resulting `a`/`b` constants go into `camera_headway_estimator.py`'s `CALIB_A`/`CALIB_B` block (see Package Overview above) — the same block also sets which `--model`/`--patch_radius` variant runs live.
+
+
+### ZoeDepth (alternative)
 
 This project uses the official ZoeDepth models loaded via PyTorch Hub. Depending on the environment, different model weights can be loaded:
 
@@ -324,6 +436,22 @@ python3 camera/camera_calibrate.py \
 
 ## Sensor Fusion
 
+### Merging camera + LiDAR + ground truth
+
+Before fusion training can run, calibrated camera and LiDAR/ground-truth data need to be time-aligned into one file. This is `headway_analysis.py`'s job, not `fusion/`'s:
+
+```bash
+python3 headway_analysis.py 20260713_191320
+```
+
+To merge a *specific* calibrated camera variant instead of the default `processed_camera/` folder, pass its subdirectory name as a second argument:
+```bash
+python3 headway_analysis.py 20260713_191320 processed_camera_yolo26x_patch
+```
+Output filename tracks the variant automatically as `merged_cam_lid_gt.csv` for the default, `merged_cam_lid_gt_yolo26x_patch.csv` for a named variant. So testing multiple camera configurations never overwrites another's merged data.
+
+### Training fusion models
+
 Located in `fusion/`. Combines calibrated camera and LiDAR headway estimates into
 a single fused estimate, using a shared time-block train/test split (first half
 of the drive trains, second half evaluates) rather than a random shuffle, since
@@ -332,8 +460,17 @@ consecutive frames are temporally correlated.
 | Script | Method |
 |---|---|
 | `fusion/least_squares_fusion.py` | Linear fusion, `d_fused = θ0 + θ1·lidar + θ2·camera`, fit by ordinary least squares |
-| `fusion/train_mlp_fusion.py` | Small MLP fusion (inputs: lidar, camera, `\|lidar - camera\|`), selectable MSE or Huber loss via `--loss` |
+| `fusion/train_mlp_fusion.py` | Small MLP fusion (inputs: lidar, camera, optionally `\|lidar - camera\|`), selectable MSE or Huber loss. Exports both an ONNX model and a `.npz` of normalization constants for live deployment |
 | `fusion/plot_fusion_comparison.py` | Combined comparison plots across all methods, reads from the shared results file |
+
+**Key `train_mlp_fusion.py` flags:**
+
+| Flag | Description |
+|---|---|
+| `--merged_csv` | Path to the merged file from the step above |
+| `--loss` | `mse` or `huber` (default `huber`) |
+| `--no_diff` | Drop the `\|lidar − camera\|` feature. On this dataset it made fusion *worse* (0.834 m vs 0.139 m MAE) — currently always used |
+| `--output_dir` | Where the `.onnx`/`.npz` are written. Defaults to `processed_fusion/` next to the merged CSV; use a variant-specific name (e.g. `processed_fusion_yolo26x_patch`) to avoid overwriting another configuration's trained model |
 
 **Usage:**
 
@@ -342,18 +479,23 @@ python3 fusion/least_squares_fusion.py \
   --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv
 
 python3 fusion/train_mlp_fusion.py \
-  --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt.csv \
-  --loss mse
+  --merged_csv ../data/multimodal_dataset_20260713_191320/merged_cam_lid_gt_yolo26x_patch.csv \
+  --loss mse --no_diff \
+  --output_dir ../data/multimodal_dataset_20260713_191320/processed_fusion_yolo26x_patch
 
 python3 fusion/plot_fusion_comparison.py \
-  --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion/fusion_comparison.csv \
+  --comparison_csv ../data/multimodal_dataset_20260713_191320/processed_fusion_yolo26x_patch/fusion_comparison.csv \
   --zoom_start 120 --zoom_end 128
 ```
 
-Every fusion script writes into a shared `processed_fusion/fusion_comparison.csv`,
-appending its own prediction column (`least_squares_fused`, `mlp_mse_fused`,
+Every fusion script writes into a shared `fusion_comparison.csv` inside its `--output_dir`,
+appending its own prediction column (`least_squares_fused`, `mlp_mse_nodiff_fused`,
 `mlp_huber_fused`) rather than each script producing a separate output file, so
 one plotting script can compare all methods at once.
+
+### Deploying a trained model live
+
+`ml_headway_estimator.py`'s `MODEL_DIR` constant (top of the file) points at whichever `--output_dir` was used above — it expects `mlp_mse_nodiff_fused.onnx` and `mlp_mse_nodiff_fused_normalization.npz` inside that folder. Update it alongside `camera_headway_estimator.py`'s `DEPTH_MODEL`/`CALIB_A`/`CALIB_B` block when switching to a newly trained variant — both blocks together define "which configuration is currently deployed."
 
 ---
 

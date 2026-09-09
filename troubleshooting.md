@@ -24,6 +24,29 @@ Patch the bridge source code located at `~/carla_ros_bridge/src/ros-bridge/carla
 
 ---
 
+### Carla Engine LowLevelFatalError
+
+**Issue***
+LowLevelFatalError [File:Unknown] [Line: 136] 
+Exception thrown: bind: Address already in use
+Signal 11 caught.
+Malloc Size=65538 LargeMemoryPoolOffset=65554 
+CommonUnixCrashHandler: Signal=11
+Malloc Size=131160 LargeMemoryPoolOffset=196744 
+Malloc Size=131160 LargeMemoryPoolOffset=327928 
+Engine crash handling finished; re-raising signal 11 for the default handler. Good bye.
+
+**Resolution**
+
+First cleanup and kill all on going process:
+
+```
+pkill -9 -f CarlaUE4
+pkill -9 -f carla_ros_bridge
+```
+
+And then restart the simulation again.
+
 ### Traffic Manager Port Conflicts
 
 **Issue**

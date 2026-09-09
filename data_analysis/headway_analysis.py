@@ -26,6 +26,8 @@ def main():
         sys.exit(1)
 
     DATETIME = sys.argv[1]
+    cam_subdir = sys.argv[2] if len(sys.argv) > 2 else 'processed_camera'
+    suffix = '' if cam_subdir == 'processed_camera' else '_' + cam_subdir.replace('processed_camera_', '')
 
     matches = glob.glob(f'../data/*{DATETIME}')
     if not matches:
@@ -46,7 +48,7 @@ def main():
     # normalize time so the graphs start exactly at t=0
     df['time'] = df['timestamp'] - df['timestamp'].iloc[0]
 
-    calib_files = glob.glob(os.path.join(run_dir, 'processed_camera', 'camera_calibrated_*.csv'))
+    calib_files = glob.glob(os.path.join(run_dir, cam_subdir, 'camera_calibrated_*.csv'))
     calibrated_path = max(calib_files, key=os.path.getmtime) if calib_files else None
     
     if os.path.exists(calibrated_path):
@@ -101,7 +103,7 @@ def main():
         merged_out = merged_cam_lid_gt[['time', 'camera_corrected', 'camera_valid',
                                          'lidar_headway_m', 'lidar_valid', 'gt_headway_m']]
 
-        merged_csv_path = os.path.join(run_dir, 'merged_cam_lid_gt.csv')
+        merged_csv_path = os.path.join(run_dir, f'merged_cam_lid_gt{suffix}.csv')
         merged_out.to_csv(merged_csv_path, index=False)
         print(f"Saved merged sensor data for fusion: {merged_csv_path} "
               f"({len(merged_out)} time-aligned frames)")

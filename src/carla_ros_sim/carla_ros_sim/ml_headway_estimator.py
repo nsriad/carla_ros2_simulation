@@ -7,15 +7,19 @@ import numpy as np
 import csv
 import os
 import time
+from typing import Any
+
+# active variants
+MODEL_DIR = 'data/multimodal_dataset_20260713_191320/processed_fusion_yolo26x_patch'
+
 
 class MLHeadwayEstimator(Node):
     def __init__(self):
         super().__init__('ml_headway_estimator')
 
         # paths configured for your workspace
-        base_dir = 'data/multimodal_dataset_20260713_191320'
-        model_path = os.path.join(base_dir, 'processed_fusion/mlp_mse_nodiff_fused.onnx')
-        norm_path = os.path.join(base_dir, 'processed_fusion/mlp_mse_nodiff_fused_normalization.npz')
+        model_path = os.path.join(MODEL_DIR, 'mlp_mse_nodiff_fused.onnx')
+        norm_path = os.path.join(MODEL_DIR, 'mlp_mse_nodiff_fused_normalization.npz')
 
         # load normalization constants & feature order
         try:
@@ -62,9 +66,12 @@ class MLHeadwayEstimator(Node):
         self.csv_writer.writerow(['timestamp', 'gt_headway_m', 'predicted_headway_m'])
 
         # subscribers (listening to the processed scalars, not raw sensors)
-        self.create_subscription(Float32, '/carla/tesla_ego/headway', self.lidar_cb, 10)
+        self.create_subscription(Float32, '/carla/tesla_ego/lidar_headway', self.lidar_cb, 10)
         self.create_subscription(Float32, '/carla/tesla_ego/camera_headway', self.camera_cb, 10)
         self.create_subscription(Float32, '/carla/tesla_ego/ground_truth_headway', self.gt_cb, 10)
+
+        # publish fused estimate
+        self.ml_pub = self.create_publisher(Float32, '/carla/tesla_ego/ml_headway', 10)
 
         # timer to run inference at a fixed 10hz rate
         self.create_timer(0.1, self.inference_loop)
@@ -113,8 +120,12 @@ class MLHeadwayEstimator(Node):
         # run inference
         pred_norm = self.session.run(None, {self.input_name: x_norm})[0]
 
-        # reverse target normalization (z-score -> meters)
+        # reverse target normalization (z-score to meters)
         predicted_headway = float(pred_norm[0]) * self.y_std + self.y_mean
+
+        ml_msg = Float32()
+        ml_msg.data = predicted_headway
+        self.ml_pub.publish(ml_msg)
 
         # log and flush to disk
         timestamp = self.get_clock().now().nanoseconds / 1e9
@@ -124,7 +135,7 @@ class MLHeadwayEstimator(Node):
         self.get_logger().info(f"GT: {self.latest_gt:.2f}m | Pred: {predicted_headway:.2f}m",
                                 throttle_duration_sec=1.0)
 
-        # reset — require a fresh pair before the next inference
+        # reset. require a fresh pair before the next inference
         self.lidar_updated = False
         self.cam_updated = False
 

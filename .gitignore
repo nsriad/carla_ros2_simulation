@@ -25,9 +25,14 @@ rosbag2_*/
 
 *.pt
 *plan.md
+data_analysis/*.pt
+data_analysis/**/*.pt
 
 # test files
 test_*.py
 
 # image files
 *.png
+
+# ignore actual environment path
+run_simulation.env

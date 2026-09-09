@@ -24,7 +24,7 @@ class LidarHeadwayEstimator(Node):
 
         # publisher for headway distance
         self.headway_pub = self.create_publisher(
-            Float32, '/carla/tesla_ego/headway', 10)
+            Float32, '/carla/tesla_ego/lidar_headway', 10)
         
         # publisher for filtered roi point cloud
         self.roi_pub = self.create_publisher(

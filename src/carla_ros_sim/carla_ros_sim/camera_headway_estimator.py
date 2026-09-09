@@ -11,9 +11,15 @@ from ultralytics import YOLO
 import csv
 import os
 import time
+import numpy as np
 
 # coco vehicle class ids — same set as yolo_detection.py
 VEHICLE_CLASSES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
+# active variants
+DEPTH_MODEL = "yolo26x-depth.pt"
+CALIB_A = 1.0339
+CALIB_B = -5.9884
+PATCH_RADIUS = 4
 
 class CameraHeadwayEstimator(Node):
     def __init__(self):
@@ -26,16 +32,21 @@ class CameraHeadwayEstimator(Node):
         self.exclude_bottom_px = 40
 
         # affine calibration fit offline in camera_calibrate.py: d_gt = a * d_cam + b
-        self.calib_a = 7.2589
-        self.calib_b = -11.0107
+        self.calib_a = CALIB_A
+        self.calib_b = CALIB_B
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.get_logger().info(f'loading yolov8 on {device}...')
         self.yolo_model = YOLO("yolov8n.pt").to(device)
 
-        self.get_logger().info(f'loading zoedepth on {device}...')
-        self.zoe_model = torch.hub.load(
-            "isl-org/ZoeDepth", "ZoeD_K", pretrained=True, trust_repo=True).to(device).eval()
+        # self.get_logger().info(f'loading zoedepth on {device}...')
+        # self.zoe_model = torch.hub.load(
+        #     "isl-org/ZoeDepth", "ZoeD_K", pretrained=True, trust_repo=True).to(device).eval()
+        # self.get_logger().info('models loaded.')
+
+        # yolov26 depth model
+        self.get_logger().info(f'loading {DEPTH_MODEL} on {device}...')
+        self.depth_model = YOLO(DEPTH_MODEL).to(device)
         self.get_logger().info('models loaded.')
 
         # subscribe to ego front camera 
@@ -130,24 +141,34 @@ class CameraHeadwayEstimator(Node):
         bx, by = max(candidates, key=lambda c: c[1])
 
         # depth on the full frame, then sample the leader's pixel
-        img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-        t_cvt = time.time()
+        # img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        # t_cvt = time.time()
         
-        with torch.no_grad():
-            depth_map = self.zoe_model.infer_pil(img_rgb)
-            t_zoe = time.time()
+        # with torch.no_grad():
+        #     depth_map = self.zoe_model.infer_pil(img_rgb)
+        #     t_zoe = time.time()
+
+        # y = min(by, depth_map.shape[0] - 1)
+        # x = min(bx, depth_map.shape[1] - 1)
+        # raw_headway = float(depth_map[y, x])
+
+        depth_result = self.depth_model(cv_image, imgsz=768, verbose=False)[0]
+        depth_map = depth_result.depth.data.cpu().numpy()
 
         y = min(by, depth_map.shape[0] - 1)
         x = min(bx, depth_map.shape[1] - 1)
-        raw_headway = float(depth_map[y, x])
+
+        y0, y1 = max(0, y - 2 * PATCH_RADIUS), y + 1
+        x0, x1 = max(0, x - PATCH_RADIUS), min(depth_map.shape[1], x + PATCH_RADIUS + 1)
+        raw_headway = np.median(depth_map[y0:y1, x0:x1])
 
         t_wall_end = time.time()
         t_sim_end = self.get_clock().now().nanoseconds / 1e9
 
-        # self.get_logger().info(
-        #     f'wall: {t_wall_end-t_wall_start:.3f}s  sim: {t_sim_end-t_sim_start:.3f}s  '
-        #     f'ratio: {(t_sim_end-t_sim_start)/(t_wall_end-t_wall_start):.2f}',
-        #     throttle_duration_sec=1.0)
+        self.get_logger().info(
+            f'wall: {t_wall_end-t_wall_start:.3f}s  sim: {t_sim_end-t_sim_start:.3f}s  '
+            f'ratio: {(t_sim_end-t_sim_start)/(t_wall_end-t_wall_start):.2f}',
+            throttle_duration_sec=1.0)
 
         return self.calib_a * raw_headway + self.calib_b
 

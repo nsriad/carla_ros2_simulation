@@ -43,8 +43,7 @@ def main():
     ax.plot(df_ml['time'], df_ml['gt_headway_m'], color='blue', linewidth=1.0,
              label=r'Ground Truth $d_{\mathrm{gt}}$')
     ax.plot(df_ml['time'], df_ml['predicted_headway_m'], color='#e07a3e', linestyle='--',
-             linewidth=1.2, marker='.', markersize=4, markeredgewidth=0,
-             label=r'ML Fused Prediction $\hat{d}$')
+             linewidth=1.0, label=r'ML Fused Prediction $\hat{d}$')
 
     ax.legend(loc='upper right', framealpha=0.9)
     ax.set_title(r'\textbf{ML Fused Prediction vs.\ Ground Truth Over Time}')

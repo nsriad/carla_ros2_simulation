@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import glob
 import os
@@ -26,6 +25,9 @@ def parse_args():
     )
     parser.add_argument("--model", type=str, default="yolo26n-depth.pt")
     parser.add_argument("--imgsz", type=int, default=768, help="matches the released weights' training resolution")
+    parser.add_argument("--patch_radius", type=int, default=4,
+                     help="sample a (2r+1)x(2r+1) pixel window around the bbox point and take "
+                          "the median depth, instead of one pixel (default 4 = 9x9 window)")
     return parser.parse_args()
 
 def main():
@@ -79,10 +81,18 @@ def main():
         x = int(row['bbox_bottom_center_x'])
         y = int(row['bbox_bottom_center_y'])
 
+        
         y = min(y, depth_map.shape[0] - 1)
         x = min(x, depth_map.shape[1] - 1)
 
-        headway_meters = depth_map[y, x]
+        # single pixel depth
+        # headway_meters = depth_map[y, x]
+
+        # median depth in a (2r+1)x(2r+1) patch around the bbox point
+        y0, y1 = max(0, y - 2 * args.patch_radius), y + 1
+        x0, x1 = max(0, x - args.patch_radius), min(depth_map.shape[1], x + args.patch_radius + 1)
+        headway_meters = np.median(depth_map[y0:y1, x0:x1])
+
 
         results.append({
             'frame': frame_name,
