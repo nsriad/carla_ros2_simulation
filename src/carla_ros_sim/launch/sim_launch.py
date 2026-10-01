@@ -87,5 +87,12 @@ def generate_launch_description():
                 'session_id': timestamp
             }],
             output='screen'
-        )
+        ),
+        Node(
+            package='carla_ros_sim',
+            executable='fault_injector',
+            name='fault_injector',
+            parameters=[{'use_sim_time': True}],
+            output='screen'
+        ),
     ])

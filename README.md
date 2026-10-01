@@ -58,6 +58,38 @@ The core ROS 2 package is `carla_ros_sim`. The source is organized into modular 
 
 ## Installation & Workspace Setup
 
+### Automated (recommended): `run_simulation.sh`
+
+A single script sequences CARLA server startup, the ROS bridge, `rqt_plot` (all four
+headway sources, live), and the simulation launch — with correct shutdown ordering when
+it finishes (CARLA and the bridge can't be killed simultaneously without leaving an
+orphaned process holding the network port — see the script's own comments).
+
+**One-time setup:**
+```bash
+cd ~/carla_simulation_ws
+cp run_simulation.env.example run_simulation.env
+chmod +x run_simulation.sh
+```
+
+Edit `run_simulation.env` with your real paths:
+```CARLA_DIR=/path/to/CARLA_0.9.16
+CARLA_BRIDGE_DIR=/path/to/carla_ros_bridge
+WORKSPACE_DIR=/path/to/carla_simulation_ws
+```
+**Usage:**
+```bash
+./run_simulation.sh              # debug run: no bag, 60s duration
+./run_simulation.sh true 60      # recorded run, 60 seconds
+```
+
+`rqt_plot` opens automatically, pre-populated with ground truth, LiDAR, camera, and
+ML-fused headway and no separate Terminal 4 step needed for a normal run.
+
+### Manual, step-by-step (for debugging, or understanding what the script automates)
+
+The same pipeline can also be run across 4 terminals directly:
+
 ### 1. Setup the ROS 2 Workspace
 Create a new workspace and clone the repository inside this directory:
 
@@ -150,21 +182,17 @@ ros2 launch carla_ros_bridge carla_ros_bridge.launch.py \
 
 ### Terminal 3: Launch Vehicle Spawner
 
-First, activate the dedicated Python virtual environment. This environment isolates the CARLA Python API and specific package versions (like NumPy 1.x) required to prevent cv_bridge incompatibilities during image extraction. Then launch everything with a single command:
-
-```bash
-source ~/carla_simulation_ws/carla_env/bin/activate
-```
-
-*Note: The system is configured so that ROS 2 continues to utilize the global, OS-level Python installation for its core execution and hardware interfacing, while drawing only the simulation-specific dependencies from this active virtual environment.*
-
-Next, navigate to the local ROS 2 workspace, source it, and start the ego vehicle with its sensors:
+Navigate to the local ROS 2 workspace, source it, and start the ego vehicle with its sensors:
 
 ```bash
 cd ~/carla_simulation_ws
 source install/setup.bash
 ros2 launch carla_ros_sim sim_launch.py record:=true duration:=60
 ```
+
+*Note: unlike the offline `data_analysis/` scripts, the live ROS 2 nodes run under the
+system Python interpreter regardless of any active virtual environment, see
+"Install Python Dependencies" above. No venv activation is needed here.*
 
 *As of the current launch file, the whole pipeline stops automatically when `vehicle_spawner`
 finishes (at `duration` seconds). No manual Ctrl+C needed for a normal run.*
@@ -176,7 +204,7 @@ finishes (at `duration` seconds). No manual Ctrl+C needed for a normal run.*
 | `record` | `false` | Enable ROS bag recording |
 | `duration` | `60` | Simulation duration in seconds. Set to `0` to run indefinitely |
 
-The launch file starts three processes simultaneously: `vehicle_spawner`, `lidar_headway_estimator`, and the ROS bag recorder (when `record:=true`). The bag is saved to `data/multimodal_dataset_YYYYMMDD_HHMMSS/` automatically.
+The launch file starts five processes simultaneously: `vehicle_spawner`, `lidar_headway_estimator`, `camera_headway_estimator`, `ml_headway_estimator`, and the ROS bag recorder (when `record:=true`). The bag is saved to `data/multimodal_dataset_YYYYMMDD_HHMMSS/` automatically.
 
 **To switch between custom map and default town mode**, change the following flag inside `vehicle_spawner.py` before building:
 
@@ -187,7 +215,19 @@ self.env = CarlaEnvironment(use_custom_map=False)  # default CARLA town
 
 ---
 
-### Terminal 4: To plot rqt live plot
+### Terminal 4: rqt_plot (live view)
+
+Already opened automatically by `run_simulation.sh` — see below. To open manually
+against a simulation started via the manual Terminal 1-3 steps:
+
+To compare all four headway sources live:
+```bash
+ros2 run rqt_plot rqt_plot \
+  /carla/tesla_ego/ground_truth_headway/data \
+  /carla/tesla_ego/lidar_headway/data \
+  /carla/tesla_ego/camera_headway/data \
+  /carla/tesla_ego/ml_headway/data
+```
 
 To plot linear acceleration in real-time:
 
@@ -199,7 +239,15 @@ To plot your Latitude and Longitude moving in real-time:
 ros2 run rqt_plot rqt_plot /carla/tesla_ego/gnss_sensor/latitude /carla/tesla_ego/gnss_sensor/longitude
 ```
 
+**Working directory: every relative path in this project depends on it.**
+- Offline analysis scripts (`headway_analysis.py`, everything in `camera/`, `fusion/`, `parsers/`) are run **from `data_analysis/`**, they reference data as `../data/...`
+- The live ROS 2 simulation (`ros2 launch ...` or `run_simulation.sh`) is run **from the workspace root** (`~/carla_simulation_ws`), live nodes write CSVs as `data/headway_csv/...`, relative to wherever the launch was invoked from
+
+Running either from the wrong directory doesn't error clearly — it silently creates a new, empty `data/` folder or fails to find a file that does exist, just in a different place.
+
 ---
+
+
 
 ## Data Post-Processing
 

@@ -11,6 +11,8 @@ from typing import Any
 
 # active variants
 MODEL_DIR = 'data/multimodal_dataset_20260713_191320/processed_fusion_yolo26x_patch'
+LIDAR_TOPIC = '/carla/tesla_ego/lidar_headway_faulty'
+CAMERA_TOPIC = '/carla/tesla_ego/camera_headway'
 
 
 class MLHeadwayEstimator(Node):
@@ -59,15 +61,15 @@ class MLHeadwayEstimator(Node):
         session_id = self.get_parameter('session_id').value
         timestamp_str = session_id if session_id else str(int(time.time()))
 
-        log_dir = 'data'
+        log_dir = 'data/headway_csv'
         os.makedirs(log_dir, exist_ok=True)
         self.csv_file = open(os.path.join(log_dir, f'ml_inference_log_{timestamp_str}.csv'), 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(['timestamp', 'gt_headway_m', 'predicted_headway_m'])
 
         # subscribers (listening to the processed scalars, not raw sensors)
-        self.create_subscription(Float32, '/carla/tesla_ego/lidar_headway', self.lidar_cb, 10)
-        self.create_subscription(Float32, '/carla/tesla_ego/camera_headway', self.camera_cb, 10)
+        self.create_subscription(Float32, LIDAR_TOPIC, self.lidar_cb, 10)
+        self.create_subscription(Float32, CAMERA_TOPIC, self.camera_cb, 10)
         self.create_subscription(Float32, '/carla/tesla_ego/ground_truth_headway', self.gt_cb, 10)
 
         # publish fused estimate
