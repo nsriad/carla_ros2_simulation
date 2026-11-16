@@ -61,7 +61,7 @@ def generate_launch_description():
             )
         ),
         Node(
-            package='carla_ros_sim',
+            package='headway_perception',
             executable='lidar_headway_estimator',
             name='lidar_headway_estimator',
             parameters=[{
@@ -71,7 +71,7 @@ def generate_launch_description():
             output='screen'
         ),
         Node(
-            package='carla_ros_sim',
+            package='headway_perception',
             executable='camera_headway_estimator',
             name='camera_headway_estimator',
             parameters=[{
@@ -81,7 +81,7 @@ def generate_launch_description():
             output='screen'
         ),
         Node(
-            package='carla_ros_sim',
+            package='headway_perception',
             executable='ml_headway_estimator',
             name='ml_headway_estimator',
             parameters=[{
@@ -92,7 +92,7 @@ def generate_launch_description():
             output='screen'
         ),
         Node(
-            package='carla_ros_sim',
+            package='headway_perception',
             executable='fault_injector',
             name='fault_injector',
             parameters=[{

@@ -28,10 +28,6 @@ setup(
     entry_points={
         'console_scripts': [
             'vehicle_spawner = carla_ros_sim.vehicle_spawner:main',
-            'lidar_headway_estimator = carla_ros_sim.lidar_headway_estimator:main',
-            'ml_headway_estimator = carla_ros_sim.ml_headway_estimator:main',
-            'camera_headway_estimator = carla_ros_sim.camera_headway_estimator:main',
-            'fault_injector = carla_ros_sim.fault_injector:main',
         ],
     },
 )

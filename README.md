@@ -42,17 +42,24 @@ A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for mult
 
 ## Package Overview
 
-The core ROS 2 package is `carla_ros_sim`. The source is organized into modular files under `src/carla_ros_sim/carla_ros_sim/`:
+The workspace has three ROS 2 packages under `src/`:
 
-| File | Description |
+| Package | Contents |
 |---|---|
-| `vehicle_spawner.py` | Main ROS 2 node. Connects to CARLA, spawns vehicles, attaches sensors, runs the control loop, and manages simulation lifetime via a configurable duration timer |
-| `carla_env.py` | Environment class handling CARLA client connection, vehicle spawning, ground truth calculation, spectator camera, and Traffic Manager configuration for both custom and default map modes |
-| `sensors.py` | Sensor attachment manager. Configures and spawns IMU, GNSS, RGB camera, and 32-channel LiDAR onto the ego vehicle |
-| `controllers.py` | PID longitudinal controller for ego vehicle gap tracking, and stop-and-go wave logic for the leader vehicle on the custom straight road |
-| `lidar_headway_estimator.py` | ROS 2 node that subscribes to the raw LiDAR point cloud, applies a 3D bounding box ROI filter, estimates space headway via radial distance, publishes both the scalar headway and the filtered ROI point cloud, and logs results to a timestamped CSV |
-| `camera_headway_estimator.py` | ROS 2 node that subscribes to the ego front camera, runs YOLOv8 vehicle detection plus a YOLO26-depth model, samples a small median-filtered patch around the leader vehicle's ground-contact point, applies an offline-fit affine calibration, publishes the corrected scalar headway, and logs results to a timestamped CSV. Active model/calibration variant is set via the constants block at the top of the file |
-| `ml_headway_estimator.py` | ROS 2 node that subscribes to the LiDAR and camera headway topics, waits for a fresh valid reading from both, and runs an ONNX-exported MLP fusion model (trained offline via `fusion/train_mlp_fusion.py`) to publish and log the final fused headway estimate. Model variant is set via `MODEL_DIR` at the top of the file |
+| `carla_ros_sim` | Simulation core: CARLA environment, sensors, vehicle spawner, controllers, and the main `sim_launch.py` |
+| `headway_perception` | LiDAR, camera and ML fused headway estimators, and the fault injector |
+| `platoon_control` | Platoon scenario and closed-loop follower control (in progress) |
+
+| File | Package | Description |
+|---|---|---|
+| `vehicle_spawner.py` | `carla_ros_sim` | Main ROS 2 node. Connects to CARLA, spawns vehicles, attaches sensors, runs the control loop, and manages simulation lifetime via a configurable duration timer |
+| `carla_env.py` | `carla_ros_sim` | Environment class handling CARLA client connection, vehicle spawning, ground truth calculation, spectator camera, and Traffic Manager configuration for both custom and default map modes |
+| `sensors.py` | `carla_ros_sim` | Sensor attachment manager. Configures and spawns IMU, GNSS, RGB camera, and 32-channel LiDAR onto the ego vehicle |
+| `controllers.py` | `carla_ros_sim` | PID longitudinal controller for ego vehicle gap tracking, and stop-and-go wave logic for the leader vehicle on the custom straight road |
+| `lidar_headway_estimator.py` | `headway_perception` | ROS 2 node that subscribes to the raw LiDAR point cloud, applies a 3D bounding box ROI filter, estimates space headway via radial distance, publishes both the scalar headway and the filtered ROI point cloud, and logs results to a timestamped CSV |
+| `camera_headway_estimator.py` | `headway_perception` | ROS 2 node that subscribes to the ego front camera, runs YOLOv8 vehicle detection plus a YOLO26-depth model, samples a small median-filtered patch around the leader vehicle's ground-contact point, applies an offline-fit affine calibration, publishes the corrected scalar headway, and logs results to a timestamped CSV. Active model/calibration variant is set via the constants block at the top of the file |
+| `ml_headway_estimator.py` | `headway_perception` | ROS 2 node that subscribes to the LiDAR and camera headway topics, waits for a fresh valid reading from both, and runs an ONNX-exported MLP fusion model (trained offline via `fusion/train_mlp_fusion.py`) to publish and log the final fused headway estimate. Model folder is set via the `model_dir` launch arg |
+| `fault_injector.py` | `headway_perception` | Drops valid LiDAR/camera headway readings with probabilities set by the `dropout_lidar` / `dropout_camera` launch args, republishing on `*_faulty` topics |
 
 ---
 
@@ -127,7 +134,7 @@ From the root of the cloned repository, build the package using `colcon`. Using 
 
 ```
 source /opt/ros/humble/setup.bash
-colcon build --packages-select carla_ros_sim --symlink-install
+colcon build --symlink-install
 ```
 Once built, source the local setup file so the ROS 2 CLI can find your package. You must do this in every new terminal before running the nodes:
 ```

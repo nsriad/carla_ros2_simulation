@@ -3,13 +3,14 @@
 <package format="3">
   <name>carla_ros_sim</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>carla environment, sensors, vehicle spawner and main launch file</description>
   <maintainer email="ms0393@uah.edu">ruby</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
+  <exec_depend>headway_perception</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>platoon_control</name>
+  <version>0.0.0</version>
+  <description>platoon scenario and closed loop follower control</description>
+  <maintainer email="ms0393@uah.edu">ruby</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <exec_depend>carla_ros_sim</exec_depend>
+  <exec_depend>headway_perception</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
