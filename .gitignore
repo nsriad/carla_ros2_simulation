@@ -33,6 +33,7 @@ test_*.py
 
 # image files
 *.png
+*.pdf
 
 # ignore actual environment path
 run_simulation.env
