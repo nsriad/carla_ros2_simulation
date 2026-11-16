@@ -19,9 +19,16 @@ class MLHeadwayEstimator(Node):
     def __init__(self):
         super().__init__('ml_headway_estimator')
 
-        # paths configured for your workspace
-        model_path = os.path.join(MODEL_DIR, 'mlp_mse_nodiff_fused.onnx')
-        norm_path = os.path.join(MODEL_DIR, 'mlp_mse_nodiff_fused_normalization.npz')
+        # defaults from constants above, can be set from launch file
+        self.declare_parameter('model_dir', MODEL_DIR)
+        self.declare_parameter('lidar_topic', LIDAR_TOPIC)
+        self.declare_parameter('camera_topic', CAMERA_TOPIC)
+        model_dir = self.get_parameter('model_dir').value
+        lidar_topic = self.get_parameter('lidar_topic').value
+        camera_topic = self.get_parameter('camera_topic').value
+
+        model_path = os.path.join(model_dir, 'mlp_mse_nodiff_fused.onnx')
+        norm_path = os.path.join(model_dir, 'mlp_mse_nodiff_fused_normalization.npz')
 
         # load normalization constants & feature order
         try:
@@ -68,8 +75,8 @@ class MLHeadwayEstimator(Node):
         self.csv_writer.writerow(['timestamp', 'gt_headway_m', 'predicted_headway_m', 'lidar_in', 'camera_in'])
 
         # subscribers (listening to the processed scalars, not raw sensors)
-        self.create_subscription(Float32, LIDAR_TOPIC, self.lidar_cb, 10)
-        self.create_subscription(Float32, CAMERA_TOPIC, self.camera_cb, 10)
+        self.create_subscription(Float32, lidar_topic, self.lidar_cb, 10)
+        self.create_subscription(Float32, camera_topic, self.camera_cb, 10)
         self.create_subscription(Float32, '/carla/tesla_ego/ground_truth_headway', self.gt_cb, 10)
 
         # publish fused estimate

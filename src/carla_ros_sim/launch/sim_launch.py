@@ -5,11 +5,17 @@ from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
+from launch_ros.parameter_descriptions import ParameterValue
 import datetime
 
 def generate_launch_description():
     record_arg = DeclareLaunchArgument('record', default_value='false')
     duration_arg = DeclareLaunchArgument('duration', default_value='60')
+    custom_map_arg = DeclareLaunchArgument('use_custom_map', default_value='false')
+    model_dir_arg = DeclareLaunchArgument(
+        'model_dir', default_value='data/multimodal_dataset_20260713_191320/processed_fusion_clean')
+    dropout_lidar_arg = DeclareLaunchArgument('dropout_lidar', default_value='0.0')
+    dropout_camera_arg = DeclareLaunchArgument('dropout_camera', default_value='0.0')
 
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     bag_name  = f'data/multimodal_dataset_{timestamp}'
@@ -33,30 +39,26 @@ def generate_launch_description():
         executable='vehicle_spawner',
         name='vehicle_spawner',
         parameters=[{
-            'duration': LaunchConfiguration('duration')
+            'duration': ParameterValue(LaunchConfiguration('duration'), value_type=int),
+            'use_custom_map': ParameterValue(LaunchConfiguration('use_custom_map'), value_type=bool),
         }],
         output='screen'
     )
 
     return LaunchDescription([
         record_arg,
-        bag_recorder,
         duration_arg,
+        custom_map_arg,
+        model_dir_arg,
+        dropout_lidar_arg,
+        dropout_camera_arg,
+        bag_recorder,
         vehicle_spawner_node,
         RegisterEventHandler(
             OnProcessExit(
                 target_action=vehicle_spawner_node,
                 on_exit=[EmitEvent(event=Shutdown(reason='vehicle_spawner finished'))]
             )
-        ),
-        Node(
-            package='carla_ros_sim',
-            executable='vehicle_spawner',
-            name='vehicle_spawner',
-            parameters=[{
-                'duration': LaunchConfiguration('duration')
-            }],
-            output='screen'
         ),
         Node(
             package='carla_ros_sim',
@@ -84,7 +86,8 @@ def generate_launch_description():
             name='ml_headway_estimator',
             parameters=[{
                 'use_sim_time': True,
-                'session_id': timestamp
+                'session_id': timestamp,
+                'model_dir': LaunchConfiguration('model_dir'),
             }],
             output='screen'
         ),
@@ -92,7 +95,11 @@ def generate_launch_description():
             package='carla_ros_sim',
             executable='fault_injector',
             name='fault_injector',
-            parameters=[{'use_sim_time': True}],
+            parameters=[{
+                'use_sim_time': True,
+                'dropout_lidar': ParameterValue(LaunchConfiguration('dropout_lidar'), value_type=float),
+                'dropout_camera': ParameterValue(LaunchConfiguration('dropout_camera'), value_type=float),
+            }],
             output='screen'
         ),
     ])

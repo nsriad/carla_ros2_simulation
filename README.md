@@ -203,15 +203,14 @@ finishes (at `duration` seconds). No manual Ctrl+C needed for a normal run.*
 |---|---|---|
 | `record` | `false` | Enable ROS bag recording |
 | `duration` | `60` | Simulation duration in seconds. Set to `0` to run indefinitely |
+| `use_custom_map` | `false` | `true` for the custom straight road with PID control, `false` for the default town with autopilot |
+| `model_dir` | `data/multimodal_dataset_20260713_191320/processed_fusion_clean` | Folder with the ONNX fusion model and its normalization file |
+| `dropout_lidar` | `0.0` | Probability of dropping a valid LiDAR headway reading |
+| `dropout_camera` | `0.0` | Probability of dropping a valid camera headway reading |
 
 The launch file starts five processes simultaneously: `vehicle_spawner`, `lidar_headway_estimator`, `camera_headway_estimator`, `ml_headway_estimator`, and the ROS bag recorder (when `record:=true`). The bag is saved to `data/multimodal_dataset_YYYYMMDD_HHMMSS/` automatically.
 
-**To switch between custom map and default town mode**, change the following flag inside `vehicle_spawner.py` before building:
-
-```python
-self.env = CarlaEnvironment(use_custom_map=True)   # custom straight road
-self.env = CarlaEnvironment(use_custom_map=False)  # default CARLA town
-```
+**To switch between custom map and default town mode**, pass `use_custom_map:=true` or `use_custom_map:=false`. The bridge must load the matching map.
 
 ---
 
@@ -569,20 +568,6 @@ After applying the 3D bounding box ROI filter, only points belonging to the lead
 | **Custom Straight Road** | <img src="asset/straight_cam_simulation_preview.gif" height="250"> | <img src="asset/straight_roi_lidar_headway_timelapse.gif" height="250"> |
 | **Town04 Highway** | <img src="asset/town04_cam_simulation_preview.gif" height="250"> | <img src="asset/town04_roi_lidar_headway_timelapse.gif" height="250"> |
 
-### Space Headway Validation
-
-LiDAR-estimated space headway compared against CARLA ground truth for both environments.
-
-| Scenario | Headway Plot |
-| :---: | :---: |
-| **Custom Straight Road** | <img src="asset/straight_space_headway.png" height="200"> |
-| **Town04 Highway** | <img src="asset/town04_space_headway.png" height="200"> |
-
-### IMU Sensor
-
-Extracted linear acceleration data capturing the ego vehicle's longitudinal and lateral dynamics.
-
-[View the IMU Acceleration Plot (PDF)](asset/acceleration_plot.pdf)
 
 ---
 

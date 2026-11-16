@@ -1,10 +1,11 @@
+import os
 import sys
 import math
 import random
 
-# Append CARLA Python API path
-carla_api_path = '/home/ruby/Nazmus_Shakib/Software/CARLA_0.9.16/PythonAPI/carla'
-sys.path.append(carla_api_path)
+# carla api path, from CARLA_DIR env var
+CARLA_DIR = os.environ.get('CARLA_DIR', '/home/ruby/Nazmus_Shakib/Software/CARLA_0.9.16')
+sys.path.append(os.path.join(CARLA_DIR, 'PythonAPI', 'carla'))
 import carla
 from agents.navigation.global_route_planner import GlobalRoutePlanner
 

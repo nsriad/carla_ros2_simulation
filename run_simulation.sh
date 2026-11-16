@@ -8,7 +8,10 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "Copy run_simulation.env.example to run_simulation.env and fill in your paths."
     exit 1
 fi
+# export so ros nodes can read CARLA_DIR
+set -a
 source "$ENV_FILE"
+set +a
 
 RECORD=${1:-false}     # ./run_simulation.sh true 60   -> record a bag
 DURATION=${2:-60}      # ./run_simulation.sh false 0   -> debug run, no bag, indefinite

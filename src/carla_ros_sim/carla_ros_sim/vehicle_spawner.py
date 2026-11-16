@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-import sys
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32
 
-#  carla python api path
-carla_api_path = '/home/ruby/Nazmus_Shakib/Software/CARLA_0.9.16/PythonAPI/carla'
-sys.path.append(carla_api_path)
-import carla
-
-# import custom modules
+# carla_env adds the carla api path, import it first
 from .carla_env import CarlaEnvironment
+import carla
 from .sensors import SensorManager
 from .controllers import PIDController, StopAndGoLeader
 
@@ -30,8 +25,10 @@ class CarlaVehicleSpawner(Node):
             self.shutdown_timer = self.create_timer(float(duration), self.shutdown_callback)
 
         # 1. environment and vehicle setup
-        # use_custom_map=False to switch to Town04/default city driving
-        self.env = CarlaEnvironment(use_custom_map=False) 
+        # true: straight highway with pid, false: town04 with autopilot
+        self.declare_parameter('use_custom_map', False)
+        use_custom_map = self.get_parameter('use_custom_map').value
+        self.env = CarlaEnvironment(use_custom_map=use_custom_map)
         try:
             self.world = self.env.connect()
             self.ego, self.leader = self.env.spawn_vehicles()
