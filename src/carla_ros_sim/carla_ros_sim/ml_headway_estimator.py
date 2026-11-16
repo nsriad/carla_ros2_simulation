@@ -10,9 +10,9 @@ import time
 from typing import Any
 
 # active variants
-MODEL_DIR = 'data/multimodal_dataset_20260713_191320/processed_fusion_yolo26x_patch'
+MODEL_DIR = 'data/multimodal_dataset_20260713_191320/processed_fusion_clean'
 LIDAR_TOPIC = '/carla/tesla_ego/lidar_headway_faulty'
-CAMERA_TOPIC = '/carla/tesla_ego/camera_headway'
+CAMERA_TOPIC = '/carla/tesla_ego/camera_headway_faulty'
 
 
 class MLHeadwayEstimator(Node):
@@ -65,7 +65,7 @@ class MLHeadwayEstimator(Node):
         os.makedirs(log_dir, exist_ok=True)
         self.csv_file = open(os.path.join(log_dir, f'ml_inference_log_{timestamp_str}.csv'), 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(['timestamp', 'gt_headway_m', 'predicted_headway_m'])
+        self.csv_writer.writerow(['timestamp', 'gt_headway_m', 'predicted_headway_m', 'lidar_in', 'camera_in'])
 
         # subscribers (listening to the processed scalars, not raw sensors)
         self.create_subscription(Float32, LIDAR_TOPIC, self.lidar_cb, 10)
@@ -101,12 +101,12 @@ class MLHeadwayEstimator(Node):
             return
 
         # -1.0 is  for "no valid reading"
-        if self.latest_lidar_h == -1.0 or self.latest_cam_h == -1.0:
-            self.lidar_updated = False
-            self.cam_updated = False
-            self.get_logger().warn('skipping inference, (-1.0) reading from lidar or camera',
-                                    throttle_duration_sec=1.0)
-            return
+        # if self.latest_lidar_h == -1.0 or self.latest_cam_h == -1.0:
+        #     self.lidar_updated = False
+        #     self.cam_updated = False
+        #     self.get_logger().warn('skipping inference, (-1.0) reading from lidar or camera',
+        #                             throttle_duration_sec=1.0)
+        #     return
 
         # build feature vector from feature_cols order
         raw_values = {
@@ -131,7 +131,7 @@ class MLHeadwayEstimator(Node):
 
         # log and flush to disk
         timestamp = self.get_clock().now().nanoseconds / 1e9
-        self.csv_writer.writerow([timestamp, self.latest_gt, predicted_headway])
+        self.csv_writer.writerow([timestamp, self.latest_gt, predicted_headway, self.latest_lidar_h, self.latest_cam_h])
         self.csv_file.flush()
 
         self.get_logger().info(f"GT: {self.latest_gt:.2f}m | Pred: {predicted_headway:.2f}m",

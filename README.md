@@ -33,9 +33,9 @@ A simulation environment bridging **CARLA 0.9.16** and **ROS 2 Humble** for mult
 | CARLA | 0.9.16 |
 | Python | 3.10 |
 | Unreal Engine | CARLA Built-in |
-| NumPy | 1.x (required — `cv_bridge` breaks under NumPy 2.x) |
+| NumPy | 1.x (required, `cv_bridge` breaks under NumPy 2.x) |
 | GPU | RTX 4090 (or similar CUDA-capable GPU) |
-| PyTorch | CUDA build — verify with `python3 -c "import torch; print(torch.cuda.is_available())"` |
+| PyTorch | CUDA build, verify with `python3 -c "import torch; print(torch.cuda.is_available())"` |
 | Ultralytics | Recent enough to include YOLO26 (`pip install -U ultralytics` if `yolo26x-depth.pt` isn't recognized) |
 
 ---

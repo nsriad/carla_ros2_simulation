@@ -10,7 +10,7 @@ run_dir = '../data/' + sys.argv[1]
 
 # define path to the extracted point clouds directly inside the run's folder
 pcd_dir = os.path.join(run_dir, 'processed_lidar', 'pointclouds')
-sample_file = 'scan_000300.pcd'
+sample_file = 'scan_001300.pcd'
 sample_path = os.path.join(pcd_dir, sample_file)
 
 # check if file exists before loading

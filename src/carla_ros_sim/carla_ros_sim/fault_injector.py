@@ -5,7 +5,7 @@ from std_msgs.msg import Float32
 import random
 
 # active fault settings — edit these, rebuild, rerun for each scenario
-DROPOUT_PROB_LIDAR = 0.4
+DROPOUT_PROB_LIDAR = 0.0
 DROPOUT_PROB_CAMERA = 0.0
 
 class FaultInjector(Node):

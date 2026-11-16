@@ -169,22 +169,40 @@ def main():
         f.write(worst[["frame", "camera_headway_m", "camera_corrected", dcol, "abs_error"]].to_string(index=False))
 
     # scatter plot: before / after
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    lims = [0, max(y_eval.max(), x_eval.max()) * 1.05]
-    axes[0].scatter(x_eval, y_eval, s=12, alpha=0.6, c="#e76f51")
-    axes[0].plot(lims, lims, "k--", linewidth=1)
-    axes[0].set_xlabel("Camera raw (m)"); axes[0].set_ylabel("Ground truth (m)")
-    axes[0].set_title(f"Before (MAE={mae_raw:.2f}m)")
+    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    # lims = [0, max(y_eval.max(), x_eval.max()) * 1.05]
+    # axes[0].scatter(x_eval, y_eval, s=12, alpha=0.6, c="#e76f51")
+    # axes[0].plot(lims, lims, "k--", linewidth=1)
+    # axes[0].set_xlabel("Camera raw (m)"); axes[0].set_ylabel("Ground truth (m)")
+    # axes[0].set_title(f"Before (MAE={mae_raw:.2f}m)")
 
-    axes[1].scatter(y_eval_corrected, y_eval, s=12, alpha=0.6, c="#4a7fb5")
-    axes[1].plot(lims, lims, "k--", linewidth=1)
-    axes[1].set_xlabel("Camera corrected (m)"); axes[1].set_ylabel("Ground truth (m)")
-    axes[1].set_title(f"After (MAE={mae_corr:.2f}m)")
+    # axes[1].scatter(y_eval_corrected, y_eval, s=12, alpha=0.6, c="#4a7fb5")
+    # axes[1].plot(lims, lims, "k--", linewidth=1)
+    # axes[1].set_xlabel("Camera corrected (m)"); axes[1].set_ylabel("Ground truth (m)")
+    # axes[1].set_title(f"After (MAE={mae_corr:.2f}m)")
 
-    plt.tight_layout()
-    plot_path = os.path.join(output_dir, f"leader_50_calibration_{suffix}.pdf")
-    plt.savefig(plot_path, format='pdf', bbox_inches="tight")
-    plt.close()
+        # scatter plot: before / after calibration, two square panels
+    with plt.rc_context({"axes.labelsize": 14, "font.size": 12, "xtick.labelsize": 12,
+                         "ytick.labelsize": 12, "axes.titlesize": 12}):
+        fig, axes = plt.subplots(1, 2, figsize=(6.4, 3.0))
+        lims = [0, max(y_eval.max(), x_eval.max()) * 1.05]
+        axes[0].scatter(x_eval, y_eval, s=6, alpha=0.6, c="#C8771B", linewidths=0)
+        axes[0].set_xlabel("Camera raw (m)")
+        axes[0].set_title(f"Before calibration (MAE = {mae_raw:.2f} m)")
+
+        axes[1].scatter(y_eval_corrected, y_eval, s=6, alpha=0.6, c="#C81B7A", linewidths=0)
+        axes[1].set_xlabel("Camera calibrated (m)")
+        axes[1].set_title(f"After calibration (MAE = {mae_corr:.2f} m)")
+
+        for ax in axes:
+            ax.plot(lims, lims, "k--", linewidth=1)
+            ax.set_xlim(lims); ax.set_ylim(lims); ax.set_aspect("equal")
+            ax.set_ylabel("Ground truth (m)")
+
+        plt.tight_layout()
+        plot_path = os.path.join(output_dir, f"leader_50_calibration_{suffix}.pdf")
+        plt.savefig(plot_path, format='pdf', bbox_inches="tight")
+        plt.close()
 
     # residual vs time
     fig2, ax2 = plt.subplots(figsize=(10, 4))
