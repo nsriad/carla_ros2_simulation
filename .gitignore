@@ -37,3 +37,9 @@ test_*.py
 
 # ignore actual environment path
 run_simulation.env
+
+# run_platoon.sh process logs
+logs/
+
+# local map inspection tool
+src/platoon_control/tools/find_highway.py
